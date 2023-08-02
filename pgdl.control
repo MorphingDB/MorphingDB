@@ -1,0 +1,4 @@
+comment = 'deep learning in postgres'
+default_version = '1.0.0'
+module_pathname = '$libdir/pgdl'
+relocatable = true
