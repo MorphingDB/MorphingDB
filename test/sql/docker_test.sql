@@ -1,8 +1,10 @@
--- create model
-SELECT create_model('sst2', '/home/lhh/postgres-DB4AI/src/udf/model/traced_albert.pt', 'nlp classification test');
-SELECT create_model('defect', '/home/lhh/postgres-DB4AI/src/udf/model/model.pt', 'image classification test');
+create extension pgdl;
 
--- create nlp text table
+-- create model
+SELECT create_model('sst2', '/tmp/pgdl/model/traced_albert.pt', 'nlp classification test');
+SELECT create_model('defect', '/tmp/pgdl/model/model.pt', 'image classification test');
+
+-- create nlp test table
 CREATE TABLE IF NOT EXISTS nlp_test(user_name text, comment text);
 -- add comment
 INSERT INTO nlp_test (user_name, comment)
@@ -29,11 +31,45 @@ CREATE TABLE IF NOT EXISTS classification_results(category integer primary key, 
 INSERT INTO classification_results (category, category_name)
 VALUES (0, '消极情绪'), (1, '积极情绪');
 
+-- create image test table
+CREATE TABLE IF NOT EXISTS image_test(
+    user_name text NOT NULL,
+    image_url text NOT NULL);
+
+-- add image
+INSERT INTO image_test(user_name, image_url)
+VALUES
+('bob', '/tmp/pgdl/test/image/img_10.jpg'), 
+('frank', '/tmp/pgdl/test/image/img_11.jpg'), 
+('bob', '/tmp/pgdl/test/image/img_12.jpg'), 
+('vicky', '/tmp/pgdl/test/image/img_1.jpg'), 
+('frank', '/tmp/pgdl/test/image/img_2.jpg'),
+('vicky', '/tmp/pgdl/test/image/img_3.jpg'), 
+('jeff', '/tmp/pgdl/test/image/img_4.jpg'), 
+('vicky', '/tmp/pgdl/test/image/img_5.jpg'), 
+('frank', '/tmp/pgdl/test/image/img_6.jpg'),
+('alice', '/tmp/pgdl/test/image/img_7.jpg'),
+('alice', '/tmp/pgdl/test/image/img_8.jpg'),
+('jeff', '/tmp/pgdl/test/image/img_9.jpg');
+
+
+-- create image classification table
+CREATE TABLE IF NOT EXISTS defect_classification_results(category integer primary key, category_name text);
+INSERT INTO defect_classification_results (category, category_name)
+VALUES 
+(0, 'A thick and thin place'), 
+(1, 'Bad selvage'),
+(2, 'Ball'),
+(3, 'Broken ends or warp'),
+(4, 'Hole'),
+(5, 'Oil spot');
+
+
 -- register callback
 SELECT register_process();
 
 
--- extension test result
+-- test
 SELECT comment, classification_results.category_name  
 FROM nlp_test 
 JOIN classification_results 
@@ -43,58 +79,12 @@ SELECT comment,predict_text('sst2', 'cpu', comment)
 AS result 
 FROM nlp_test;
 
-SELECT image_test.user_name,predict_text('defect', 'cpu', url) 
+SELECT *, defect_classification_results.category_name
+AS result 
+FROM image_test
+JOIN defect_classification_results
+ON predict_text('defect', 'cpu', image_url) = defect_classification_results.category_name;
+
+SELECT *, predict_text('defect', 'cpu', image_url) 
 AS result 
 FROM image_test;
-
-SELECT nlp_test.user_name, nlp_test.comment
-FROM nlp_test
-JOIN image_test
-ON image_test.user_name = nlp_test.user_name
-WHERE predict_text('sst2', 'cpu', nlp_test.comment)='消极情绪'
-AND predict_text('defect', 'cpu', image_test.url)='Hole';
-
-
-
--- kernel
-
--- create model
-CREATE MODEL sst2 
-PATH '/home/lhh/model/traced_albert.pt' 
-DESCRIPTION 'nlp test';
-
-CREATE MODEL defect 
-PATH '/home/lhh/model/model.pt' 
-DESCRIPTION 'image classification test';
-
--- create udf
-
-CREATE OR REPLACE FUNCTION register_process(OUT void)
-    AS '/home/lhh/pg_kernel/src/udf/build/pgdl.so', 'RegisterCallback' LANGUAGE C STRICT;
-
-
--- 注册输入输出处理函数
-SELECT
-register_process();
-
-
-SELECT comment, classification_results.category_name  
-FROM nlp_test 
-JOIN classification_results 
-ON pg_predict_float('sst2', 'cpu', comment) = classification_results.category;
-
-SELECT comment, pg_predict_text('sst2', 'cpu', comment) 
-AS result 
-FROM nlp_test;
-
-SELECT image_test.user_name, pg_predict_text('defect', 'cpu', url) 
-AS result 
-FROM image_test;
-
-
-SELECT nlp_test.user_name, nlp_test.comment
-FROM nlp_test
-JOIN image_test
-ON image_test.user_name = nlp_test.user_name
-WHERE pg_predict_text('sst2', 'cpu', nlp_test.comment)='消极情绪'
-AND pg_predict_text('defect', 'cpu', image_test.url)='Hole';
