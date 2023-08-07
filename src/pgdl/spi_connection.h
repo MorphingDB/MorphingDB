@@ -71,7 +71,13 @@ public:
     bool PrepareExecute(std::vector<Datum>& values);
     bool Execute(const std::string& query);
 
+    
 private:
+    /**
+     * pg forbit parallel thread to do spi,
+     * before call Bind and Execute
+    */
+    static inline std::mutex  conn_lock_;
     bool              is_connected_; // 连接标识
     bool              is_prepared_;  // prepare标识
     SPIPlanPtr        plan_;         
