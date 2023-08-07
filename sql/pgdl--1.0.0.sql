@@ -18,3 +18,38 @@ CREATE OR REPLACE FUNCTION predict_text(IN model_name cstring, IN type cstring, 
     AS 'MODULE_PATHNAME', 'predict_text' LANGUAGE C STRICT;
 CREATE OR REPLACE FUNCTION register_process(OUT void)
     AS 'MODULE_PATHNAME', 'register_process' LANGUAGE C STRICT;
+
+-- create batch function
+CREATE OR REPLACE FUNCTION dummy_predict_batch_func_internal(IN aggstate internal, IN model_name cstring, IN type cstring, VARIADIC vec "any" , OUT internal)
+AS 'MODULE_PATHNAME', 'predict_batch_dummy' LANGUAGE C;
+CREATE OR REPLACE FUNCTION dummy_predict_batch_func_float(IN aggstate internal, OUT float8)
+AS 'MODULE_PATHNAME', 'predict_batch_dummy' LANGUAGE C;
+CREATE OR REPLACE FUNCTION dummy_predict_batch_func_text(IN aggstate internal, OUT text)
+AS 'MODULE_PATHNAME', 'predict_batch_dummy' LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION predict_batch_accum(IN aggstate internal, IN model_name cstring, IN type cstring, VARIADIC vec "any" , OUT internal)
+    AS 'MODULE_PATHNAME', 'predict_batch_accum' LANGUAGE C;
+CREATE OR REPLACE FUNCTION predict_batch_accum_inv(IN aggstate internal, IN model_name cstring, IN type cstring, VARIADIC vec "any" , OUT internal)
+    AS 'MODULE_PATHNAME', 'predict_batch_accum_inv' LANGUAGE C;
+CREATE OR REPLACE FUNCTION predict_batch_final_float8(IN aggstate internal, OUT float8)
+    AS 'MODULE_PATHNAME', 'predict_batch_final_float8' LANGUAGE C;
+CREATE OR REPLACE FUNCTION predict_batch_final_text(IN aggstate internal, OUT text)
+    AS 'MODULE_PATHNAME', 'predict_batch_final_text' LANGUAGE C;
+CREATE OR REPLACE AGGREGATE predict_batch_float8(IN model_name cstring, IN type cstring, VARIADIC vec "any") (
+    STYPE=internal,
+    SFUNC=dummy_predict_batch_func_internal,
+    FINALFUNC=dummy_predict_batch_func_float,
+    MSFUNC=predict_batch_accum,
+    MINVFUNC=predict_batch_accum_inv,
+    MFINALFUNC=predict_batch_final_float8,
+    MSTYPE=internal);
+CREATE OR REPLACE AGGREGATE predict_batch_text(IN model_name cstring, IN type cstring, VARIADIC vec "any") (
+    STYPE=internal,
+    SFUNC=dummy_predict_batch_func_internal,
+    FINALFUNC=dummy_predict_batch_func_text,
+    MSFUNC=predict_batch_accum,
+    MINVFUNC=predict_batch_accum_inv,
+    MFINALFUNC=predict_batch_final_text,
+    MSTYPE=internal);
+CREATE OR REPLACE PROCEDURE enable_print_batch_time(IN enable bool)
+    AS 'MODULE_PATHNAME', 'enable_print_batch_time' LANGUAGE C;
