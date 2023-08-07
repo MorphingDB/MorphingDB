@@ -9,6 +9,27 @@
 #include "env.h"
 #include "spi_connection.h"
 
+extern "C" {
+#include "miscadmin.h"
+}
+
+
+#define BEGIN_DO_IN_CONN() \
+    PG_TRY();              \
+    {
+
+#define END_DO_IN_CONN(is_in_DisConnect) \
+    }                                  \
+    PG_CATCH();                        \
+    {                                  \
+        if (!is_in_DisConnect)           \
+        {                              \
+            DisConnect();              \
+            PG_RE_THROW();             \
+        }                              \
+    }                                  \
+    PG_END_TRY();
+
 
 SPIConnector::SPIConnector() :
     is_connected_(false),
@@ -25,7 +46,11 @@ SPIConnector::~SPIConnector()
 
 bool SPIConnector::Connect()
 {
+    // support multi thread, skip stack depth check
+    restore_stack_base(NULL);
+
     if(!is_connected_){
+        conn_lock_.lock();
         if(SPI_connect() != SPI_OK_CONNECT){
             return false;
         }
@@ -36,15 +61,22 @@ bool SPIConnector::Connect()
 
 void SPIConnector::DisConnect()
 {
-    if (is_connected_) {
-        if (is_prepared_) {
-            SPI_freeplan(plan_);
-            plan_ = nullptr;
-            is_prepared_ = false;
-        }
-        SPI_finish();
-        is_connected_ = false;
+    if (!is_connected_)
+        return;
+
+    BEGIN_DO_IN_CONN();
+
+    if (is_prepared_) {
+        SPI_freeplan(plan_);
+        plan_ = nullptr;
+        is_prepared_ = false;
     }
+    SPI_finish();
+    is_connected_ = false;
+
+    END_DO_IN_CONN(true);
+
+    conn_lock_.unlock();
 }
 
 bool SPIConnector::IsConnected()
@@ -68,11 +100,17 @@ bool SPIConnector::Prepare(const std::string& query,
         plan_ = nullptr;
         is_prepared_ = false;
     }
+
+    BEGIN_DO_IN_CONN();
+
     plan_ = SPI_prepare(query.c_str(), arg_types.size(), arg_types.data());
     if(plan_ == nullptr){
         return false;
     }
     is_prepared_ = true;
+
+    END_DO_IN_CONN(false);
+
     return true;
 }
 
@@ -84,7 +122,13 @@ bool SPIConnector::PrepareExecute(std::vector<Datum>& values)
     if(!is_prepared_){
         return false;
     }
+
+    BEGIN_DO_IN_CONN();
+
     SPI_execp(plan_, values.data(), nullptr, 0);
+    
+    END_DO_IN_CONN(false);
+
     return true;
 }
 
@@ -93,12 +137,18 @@ bool SPIConnector::Execute(const std::string& query)
     if(!is_connected_){
         return false;
     }
+
+    BEGIN_DO_IN_CONN();
+
     if(is_prepared_){
         SPI_freeplan(plan_);
         plan_ = nullptr;
         is_prepared_ = false;
     }
     SPI_execute(query.c_str(), true, 0);
+    
+    END_DO_IN_CONN(false);
+
     return true;
 }
 
