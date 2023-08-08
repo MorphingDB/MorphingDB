@@ -75,8 +75,6 @@ bool SST2PreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
     if(model_manager.GetModelDeviceType("sst2", device_type)){
 
     }
-    
-
 
     text_a = (char*)args[0].ptr;
 
@@ -129,6 +127,7 @@ bool SST2PreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
     token_ids = torch::unsqueeze(token_ids, 0);
     attention_mask = torch::unsqueeze(attention_mask, 0);
     token_type_ids = torch::unsqueeze(token_type_ids, 0);
+    position_ids = torch::unsqueeze(position_ids, 0);
 
     img_tensor.push_back(token_ids.to(device_type));
     img_tensor.push_back(attention_mask.to(device_type));
@@ -138,19 +137,18 @@ bool SST2PreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
     return true;
 }
 
-bool SST2OutputProcessFloat(torch::jit::IValue& output_tensor, Args* args, float8& result)
+bool SST2OutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
 {
-    //output_tensor = output_tensor.element()[0];
-    auto tensor = output_tensor.toTuple()->elements()[0].toTensor();
+    auto tensor = outputs.toTuple()->elements()[0].toTensor();
     result = torch::cat(tensor, 0).argmax(1).item<float8>();
     return true;
 }
 
-bool SST2OutputProcessText(torch::jit::IValue& output_tensor, Args* args, std::string& result)
+bool SST2OutputProcessText(torch::jit::IValue& outputs, Args* args, std::string& result)
 {
     float8 result_float;
     char*  result_str = NULL;
-    auto tensor = output_tensor.toTuple()->elements()[0].toTensor();
+    auto tensor = outputs.toTuple()->elements()[0].toTensor();
     result_float = torch::cat(tensor, 0).argmax(1).item<float8>();
     if(result_float == 0){
         result = "消极情绪";
