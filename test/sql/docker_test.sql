@@ -88,3 +88,25 @@ ON predict_text('defect', 'cpu', image_url) = defect_classification_results.cate
 SELECT *, predict_text('defect', 'cpu', image_url) 
 AS result 
 FROM image_test;
+
+
+-- batch test
+SELECT nlp_test_2.comment, classification_results.category_name  
+FROM (select user_name, comment, predict_batch_float('sst2', 'cpu', comment) over (rows between current row and 15 following) as comment_2 from nlp_test ) as nlp_test_2
+JOIN classification_results 
+ON nlp_test_2.comment_2 = classification_results.category;
+
+SELECT comment,predict_batch_text('sst2', 'cpu', comment) over (rows between current row and 15 following)
+AS result 
+FROM nlp_test;
+
+SELECT *, defect_classification_results.category_name
+AS result 
+FROM (select predict_batch_text('defect', 'cpu', image_url) over (rows between current row and 15 following) from image_test) as image_test_2(pred_cat)
+JOIN defect_classification_results
+ON pred_cat = defect_classification_results.category_name;
+
+SELECT *, predict_batch_text('defect', 'cpu', image_url) over (rows between current row and 15 following) from image_test)
+AS result 
+FROM image_test;
+
