@@ -31,8 +31,8 @@ CREATE OR REPLACE FUNCTION predict_batch_accum(IN aggstate internal, IN model_na
     AS 'MODULE_PATHNAME', 'predict_batch_accum' LANGUAGE C;
 CREATE OR REPLACE FUNCTION predict_batch_accum_inv(IN aggstate internal, IN model_name cstring, IN type cstring, VARIADIC vec "any" , OUT internal)
     AS 'MODULE_PATHNAME', 'predict_batch_accum_inv' LANGUAGE C;
-CREATE OR REPLACE FUNCTION predict_batch_final_float8(IN aggstate internal, OUT float8)
-    AS 'MODULE_PATHNAME', 'predict_batch_final_float8' LANGUAGE C;
+CREATE OR REPLACE FUNCTION predict_batch_final_float(IN aggstate internal, OUT float8)
+    AS 'MODULE_PATHNAME', 'predict_batch_final_float' LANGUAGE C;
 CREATE OR REPLACE FUNCTION predict_batch_final_text(IN aggstate internal, OUT text)
     AS 'MODULE_PATHNAME', 'predict_batch_final_text' LANGUAGE C;
 CREATE OR REPLACE AGGREGATE predict_batch_float8(IN model_name cstring, IN type cstring, VARIADIC vec "any") (
@@ -41,7 +41,7 @@ CREATE OR REPLACE AGGREGATE predict_batch_float8(IN model_name cstring, IN type 
     FINALFUNC=dummy_predict_batch_func_float,
     MSFUNC=predict_batch_accum,
     MINVFUNC=predict_batch_accum_inv,
-    MFINALFUNC=predict_batch_final_float8,
+    MFINALFUNC=predict_batch_final_float,
     MSTYPE=internal);
 CREATE OR REPLACE AGGREGATE predict_batch_text(IN model_name cstring, IN type cstring, VARIADIC vec "any") (
     STYPE=internal,
