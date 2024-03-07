@@ -13,6 +13,7 @@ set(SET_VERBOSE_MAKEFILE ON)
 find_package(PostgreSQL REQUIRED)
 find_package(Torch REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(SentencePiece)
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 set(CMAKE_INSTALL_RPATH ${TORCH_LIBRARIES})
@@ -49,10 +50,6 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 
 # postgres include
 include_directories(${PostgreSQL_INCLUDE_DIRS})
-
-#include_directories(${SentencePiece_INCLUDE_DIRS})
-
-
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/external_process)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/pgdl)
@@ -73,15 +70,15 @@ target_link_libraries(pgdl ${PostgreSQL_LIBRARIES})
 
 #set_target_properties(pgdl PROPERTIES INSTALL_RPATH ${TORCH_LIBRARIES})
 
-#include_directories(${SentencePiece_INCLUDE_DIR})
+include_directories(${SentencePiece_INCLUDE_DIR})
 target_link_libraries(pgdl sentencepiece)
 
 # install extension share lib
 install(FILES build/pgdl.so
-        DESTINATION "${PostgreSQL_PKGLIB_DIR}"
+        DESTINATION "${PostgreSQL_PKGLIB_DIR}/pgdl"
 )
 
 # install control file and sql file
-install(FILES pgdl.control sql/pgdl--1.0.0.sql
+install(FILES pgdl.control sql/pgdl--1.0.0.sql sql/pgdl--1.0.0--1.1.0.sql
         DESTINATION "${PostgreSQL_SHARE_DIR}/extension"
 )
