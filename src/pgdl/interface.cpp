@@ -3,6 +3,7 @@
 #include "interface.h"
 #include "unistd.h"
 #include "myfunc.h"
+#include "vector.h"
 #include <cstring>
 
 #ifdef __cplusplus
@@ -11,7 +12,13 @@ extern "C" {
 #include "utils/builtins.h"
 #include "utils/formatting.h"
 #include "catalog/pg_type_d.h"
+#include "catalog/namespace.h"
 #include "common/fe_memutils.h"
+#include "access/tableam.h"
+#include "libpq/pqformat.h"
+#include "utils/syscache.h"
+
+
 
 
 
@@ -30,6 +37,27 @@ PG_FUNCTION_INFO_V1(predict_text);
 
 // register external process
 PG_FUNCTION_INFO_V1(register_process);
+
+// vector
+PG_FUNCTION_INFO_V1(mvec_input);
+PG_FUNCTION_INFO_V1(mvec_output);
+PG_FUNCTION_INFO_V1(mvec_receive);
+PG_FUNCTION_INFO_V1(mvec_send);
+
+PG_FUNCTION_INFO_V1(get_mvec_data);
+PG_FUNCTION_INFO_V1(get_mvec_shape);
+
+// type conversion function
+PG_FUNCTION_INFO_V1(array_to_mvec);
+PG_FUNCTION_INFO_V1(text_to_mvec);
+PG_FUNCTION_INFO_V1(mvec_to_float_array);
+
+// operator function
+PG_FUNCTION_INFO_V1(mvec_add);
+PG_FUNCTION_INFO_V1(mvec_sub);
+PG_FUNCTION_INFO_V1(mvec_equal);
+
+PG_FUNCTION_INFO_V1(mvec_am_handler);
 
 Datum
 create_model(PG_FUNCTION_ARGS)
@@ -322,6 +350,456 @@ register_process(PG_FUNCTION_ARGS)
 {
     register_callback();
     PG_RETURN_VOID();
+}
+
+Datum
+mvec_input(PG_FUNCTION_ARGS)
+{
+    char            *str = NULL;
+    float           *x = (float*)palloc(sizeof(float) * MAX_VECTOR_DIM);
+    int32           shape[MAX_VECTOR_SHAPE_SIZE];
+    MVec            *vector = NULL;
+    unsigned int    dim = 0;
+    unsigned int    shape_size = 0;
+    unsigned int    shape_dim = 1;
+
+    
+    str = PG_GETARG_CSTRING(0);
+
+    ereport(INFO,
+					(errmsg("str:%s",str)));
+
+    parse_vector_str(str, &dim, x, &shape_size, shape);
+
+    // Verify that the multiplication of shape values equals dim
+    for(int i=0; i<shape_size; i++){
+        shape_dim *= shape[i];
+    }
+
+    if(dim != shape_dim){
+        ereport(ERROR,
+					(errmsg("the multiplication of shape values not equals, dim:%d, shape_dim:%d", dim, shape_dim)));
+    }
+    vector = new_mvec(dim, shape_size);
+
+    for(int i=0; i<dim; ++i){
+       SET_MVEC_VAL(vector, i, x[i]);
+    }
+
+    for(int i=0; i<shape_size; ++i){
+        ereport(INFO,
+					(errmsg("shape[i]:%d", shape[i])));
+        SET_MVEC_SHAPE_VAL(vector, i, shape[i]);
+
+        ereport(INFO,
+					(errmsg("shape1[i]:%d", GET_MVEC_SHAPE_VAL(vector, 0))));
+    }
+
+    pfree(x);
+    PG_RETURN_POINTER(vector);
+}
+
+Datum
+mvec_output(PG_FUNCTION_ARGS)
+{
+    MVec*           mvec = NULL;
+    StringInfoData  ret;
+    int32           dim = 0;
+    int32           shape_size = 0;
+    int             i = 0;
+
+    mvec = PG_GETARG_MVEC_P(0);
+
+    dim = GET_MVEC_DIM(mvec);
+    shape_size = GET_MVEC_SHAPE_SIZE(mvec);
+
+    if(dim > MAX_VECTOR_DIM){
+        ereport(ERROR,
+                (errmsg("dim is larger than %d dim!", MAX_VECTOR_DIM)));
+    }
+
+    if(shape_size > MAX_VECTOR_SHAPE_SIZE){
+        ereport(ERROR,
+					(errmsg("shape size is larger than 10!")));
+    }
+
+    initStringInfo(&ret);
+    appendStringInfoChar(&ret, '[');
+
+    if(dim > 10){
+        for(int i=0; i<3; ++i){
+            appendStringInfoString(&ret, DatumGetCString(DirectFunctionCall1(float4out, Float4GetDatum(GET_MVEC_VAL(mvec, i)))));
+            appendStringInfoChar(&ret, ',');
+        }
+        appendStringInfoString(&ret, "....");
+        appendStringInfoChar(&ret, ',');
+        for(int i=dim-3; i<dim; ++i){
+            appendStringInfoString(&ret, DatumGetCString(DirectFunctionCall1(float4out, Float4GetDatum(GET_MVEC_VAL(mvec, i)))));
+            if (i != dim - 1) {
+                appendStringInfoChar(&ret, ',');
+            }
+        }
+    }else{
+        for(int i=0; i<dim; ++i){
+            appendStringInfoString(&ret, DatumGetCString(DirectFunctionCall1(float4out, Float4GetDatum(GET_MVEC_VAL(mvec, i)))));
+            if (i != dim - 1) {
+                appendStringInfoChar(&ret, ',');
+            }
+        }
+    }
+
+    appendStringInfoChar(&ret, ']');
+    
+    appendStringInfoChar(&ret, '{');
+    for(int i=0; i<shape_size; ++i){
+        appendStringInfoString(&ret, DatumGetCString(DirectFunctionCall1(int4out, Int32GetDatum(GET_MVEC_SHAPE_VAL(mvec, i)))));
+        if (i != shape_size - 1) {
+            appendStringInfoChar(&ret, ',');
+        }
+    }
+    appendStringInfoChar(&ret, '}');
+
+    PG_RETURN_CSTRING(ret.data);
+}
+
+Datum
+mvec_receive(PG_FUNCTION_ARGS)
+{
+    StringInfo        str;
+    MVec*             ret = NULL;
+    int32_t           dim = 0;
+    int32_t           shape_size = 0;
+    int               i;
+
+    str = (StringInfo)PG_GETARG_POINTER(0);
+    dim = pq_getmsgint(str, sizeof(int32_t));
+
+    ret = new_mvec(dim, 1);
+    for(i=0; i<dim; ++i){
+        SET_MVEC_VAL(ret, i, pq_getmsgfloat4(str));
+    }
+
+    PG_RETURN_POINTER(ret);
+}
+
+Datum
+mvec_send(PG_FUNCTION_ARGS)
+{
+    MVec            *mvec; 
+	StringInfoData   str;
+    int              i;
+
+    mvec = PG_GETARG_MVEC_P(0);
+
+	pq_begintypsend(&str);
+	pq_sendint(&str, GET_MVEC_DIM(mvec), sizeof(int32_t));
+	for (i = 0; i < GET_MVEC_DIM(mvec); ++i){
+        pq_sendfloat4(&str, GET_MVEC_VAL(mvec, i));
+    }
+
+	PG_RETURN_BYTEA_P(pq_endtypsend(&str));
+}
+
+Datum
+get_mvec_data(PG_FUNCTION_ARGS)
+{
+    MVec	        *vector = NULL;
+    //float           x[MAX_VECTOR_DIM];
+    ArrayType       *result = NULL;
+    Datum           *elems = NULL; 
+    unsigned int    dim = 0;
+    
+    vector = PG_GETARG_MVEC_P(0);
+
+    dim = GET_MVEC_DIM(vector);
+
+    elems = (Datum *)palloc(sizeof(Datum *) * dim);
+
+    for(int i=0; i<dim; ++i){
+        elems[i] = Float4GetDatum(GET_MVEC_VAL(vector, i));
+    }
+
+    result = construct_array(elems, dim, FLOAT4OID, sizeof(float4), true, 'i');
+
+    pfree(elems);
+    PG_RETURN_ARRAYTYPE_P(result);
+}
+
+Datum
+get_mvec_shape(PG_FUNCTION_ARGS)
+{
+    MVec	        *vector = NULL;
+    //float           x[MAX_VECTOR_DIM];
+    ArrayType       *result = NULL;
+    Datum           *elems = NULL; 
+    unsigned int    shape_size = 0;
+    
+    vector = PG_GETARG_MVEC_P(0);
+
+    shape_size = GET_MVEC_SHAPE_SIZE(vector);
+
+    elems = (Datum *)palloc(sizeof(Datum *) * shape_size);
+
+    for(int i=0; i<shape_size; ++i){
+        elems[i] = Int32GetDatum(GET_MVEC_SHAPE_VAL(vector, i));
+    }
+
+    result = construct_array(elems, shape_size, INT4OID, sizeof(int32), true, 'i');
+
+    pfree(elems);
+    PG_RETURN_ARRAYTYPE_P(result);
+}
+
+Datum
+array_to_mvec(PG_FUNCTION_ARGS)
+{
+    ArrayType       *array = NULL;
+    Oid             array_type;
+    MVec            *mvec = NULL;
+    int             array_length;
+    int             i = 0;
+    Datum           *elems = NULL;
+    bool            *nulls = NULL;
+
+
+    array = PG_GETARG_ARRAYTYPE_P(0);
+
+    array_type = ARR_ELEMTYPE(array);
+
+    
+    switch (array_type) {
+        case FLOAT4OID:
+        {
+            deconstruct_array(array, FLOAT4OID, sizeof(float4), true, 'i', &elems, &nulls, &array_length);
+            break;
+        }
+        case FLOAT8OID:
+        {
+            deconstruct_array(array, FLOAT8OID, sizeof(float8), FLOAT8PASSBYVAL, 'd', &elems, &nulls, &array_length);
+            for(i=0; i<array_length; ++i){
+                elems[i] = Float4GetDatum(DatumGetFloat8(elems[i]));
+            }
+            break;
+        }
+        case INT4OID:
+        {
+            deconstruct_array(array, INT4OID, sizeof(int), true, 'i', &elems, &nulls, &array_length);
+            for(i=0; i<array_length; ++i){
+                elems[i] = Float4GetDatum(DatumGetInt32(elems[i]));
+            }
+            break;
+        }
+        default:
+        {
+            ereport(ERROR,
+					(errmsg("unsupport %d type to mvec!"), array_type));
+        }
+    }
+
+    if(array_length > MAX_VECTOR_DIM){
+        ereport(ERROR,
+					(errmsg("mvec cannot have more than %d dimensions", MAX_VECTOR_DIM)));
+    }
+
+    mvec = new_mvec(array_length, 1);
+
+    for(i=0; i<array_length; ++i){
+        SET_MVEC_VAL(mvec, i, DatumGetFloat4(elems[i]));
+    }
+
+    SET_MVEC_SHAPE_VAL(mvec, 0, array_length);
+
+    PG_RETURN_POINTER(mvec);
+
+}
+
+Datum
+text_to_mvec(PG_FUNCTION_ARGS)
+{
+    char             *str = NULL;
+    MVec             *vector = NULL;
+    unsigned int     dim = 0;
+
+    int32            shape[MAX_VECTOR_SHAPE_SIZE];
+    float            *x = (float*)palloc(sizeof(float) * MAX_VECTOR_DIM);
+    unsigned int     shape_size = 0;
+    unsigned int     shape_dim = 1;
+
+    str = TextDatumGetCString(PG_GETARG_DATUM(0));
+
+    parse_vector_str(str, &dim, x, &shape_size, shape);
+
+    for(int i=0; i<shape_size; i++){
+        shape_dim *= shape[i];
+    }
+
+    if(dim != shape_dim){
+        ereport(ERROR,
+					(errmsg("the multiplication of shape values not equals, dim:%d, shape_dim:%d", dim, shape_dim)));
+    }
+
+    vector = new_mvec(dim, shape_size);
+    
+    for(int i=0; i<dim; ++i){
+        SET_MVEC_VAL(vector, i, x[i]);
+    }
+
+    for(int i=0; i<shape_size; ++i){
+        SET_MVEC_SHAPE_VAL(vector, i, shape[i]);
+    }
+
+    pfree(x);
+    PG_RETURN_POINTER(vector);
+}
+
+Datum
+mvec_to_float_array(PG_FUNCTION_ARGS)
+{
+    MVec	        *mvec = NULL;
+    ArrayType       *ret = NULL;
+    Datum           *elems = NULL; 
+    int32_t         dim = 0;
+    int             i = 0;
+    
+    mvec = PG_GETARG_MVEC_P(0);
+
+    dim = GET_MVEC_DIM(mvec);
+
+    elems = (Datum *)palloc(sizeof(Datum *) * dim);
+
+    for(i=0; i<dim; ++i){
+        elems[i] = Float4GetDatum(GET_MVEC_VAL(mvec, i));
+    }
+
+    ret = construct_array(elems, dim, FLOAT4OID, sizeof(float4), true, 'i');
+
+    pfree(elems);
+    PG_RETURN_ARRAYTYPE_P(ret);
+}
+
+Datum
+mvec_add(PG_FUNCTION_ARGS)
+{
+    MVec	      *mvec_left = NULL;
+    MVec          *mvec_right = NULL;
+    MVec          *ret = NULL;
+    int32_t        dim = 0;
+    int32_t        shape_size = 0;
+    int            i = 0;
+
+    mvec_left = PG_GETARG_MVEC_P(0);
+    mvec_right = PG_GETARG_MVEC_P(1);
+
+
+    if(GET_MVEC_DIM(mvec_left) != GET_MVEC_DIM(mvec_right)){
+        ereport(ERROR,
+					(errmsg("the two mvecs have different dimensions!,(),()")));
+    }
+
+    if(!shape_equal(mvec_left, mvec_right)){
+        ereport(ERROR,
+					(errmsg("the two mvecs have different shape!,(),()")));
+    }
+    
+    dim = GET_MVEC_DIM(mvec_left);
+    shape_size = GET_MVEC_SHAPE_SIZE(mvec_left);
+    ret = new_mvec(dim, shape_size);
+    
+    for(i=0; i<dim; ++i){
+        float left = GET_MVEC_VAL(mvec_left, i);
+        float right = GET_MVEC_VAL(mvec_right, i);
+        float res = left + right;
+        if (unlikely(isinf(res)) && !isinf(left) && !isinf(right)){
+            ereport(ERROR,
+					(errmsg("overflow for %f + %f", left, right)));
+        }
+        SET_MVEC_VAL(ret, i, (left + right));
+    }
+
+    for(i=0; i<shape_size; ++i){
+        int32_t value = GET_MVEC_SHAPE_VAL(mvec_left, i);
+        SET_MVEC_SHAPE_VAL(ret, i, value);
+    }
+
+    PG_RETURN_POINTER(ret);
+}
+
+Datum
+mvec_sub(PG_FUNCTION_ARGS)
+{
+    MVec	      *mvec_left = NULL;
+    MVec          *mvec_right = NULL;
+    MVec          *ret = NULL;
+    int32_t        dim = 0;
+    int32_t        shape_size = 0;
+    int            i = 0;
+
+    mvec_left = PG_GETARG_MVEC_P(0);
+    mvec_right = PG_GETARG_MVEC_P(1);
+
+
+    if(GET_MVEC_DIM(mvec_left) != GET_MVEC_DIM(mvec_right)){
+        ereport(ERROR,
+					(errmsg("the two mvecs have different dimensions!,(),()")));
+    }
+
+    if(!shape_equal(mvec_left, mvec_right)){
+        ereport(ERROR,
+					(errmsg("the two mvecs have different shape!,(),()")));
+    }
+
+    dim = GET_MVEC_DIM(mvec_left);
+    shape_size = GET_MVEC_SHAPE_SIZE(mvec_left);
+    ret = new_mvec(dim, shape_size);
+    
+    for(i=0; i<dim; ++i){
+        float left = GET_MVEC_VAL(mvec_left, i);
+        float right = GET_MVEC_VAL(mvec_right, i);
+        float res = left - right;
+        if (unlikely(isinf(res)) && !isinf(left) && !isinf(right)){
+            ereport(ERROR,
+					(errmsg("overflow for %f - %f", left, right)));
+        }
+        SET_MVEC_VAL(ret, i, res);
+    }
+
+    for(i=0; i<shape_size; ++i){
+        int32_t value = GET_MVEC_SHAPE_VAL(mvec_left, i);
+        SET_MVEC_SHAPE_VAL(ret, i, value);
+    }
+
+
+    PG_RETURN_POINTER(ret);
+}
+
+Datum
+mvec_equal(PG_FUNCTION_ARGS)
+{
+    MVec	      *mvec_left = NULL;
+    MVec          *mvec_right = NULL;
+    MVec          *ret = NULL;
+    int32_t        dim = 0;
+    int            i = 0;
+
+    mvec_left = PG_GETARG_MVEC_P(0);
+    mvec_right = PG_GETARG_MVEC_P(1);
+
+
+    if(GET_MVEC_DIM(mvec_left) != GET_MVEC_DIM(mvec_right)){
+        PG_RETURN_BOOL(false);
+    }
+
+    dim = GET_MVEC_DIM(mvec_left);
+    
+    for(i=0; i<dim; ++i){
+        float left = GET_MVEC_VAL(mvec_left, i);
+        float right = GET_MVEC_VAL(mvec_right, i);
+        if (isnan(left) ? !isnan(right) 
+                : (isnan(right) || left - right > 1e-6 || right - left > 1e-6))
+            PG_RETURN_BOOL(false);
+    }
+
+    PG_RETURN_BOOL(true);
 }
 
 #ifdef __cplusplus
