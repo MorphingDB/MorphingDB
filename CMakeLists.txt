@@ -75,7 +75,7 @@ target_link_libraries(pgdl sentencepiece)
 
 # install extension share lib
 install(FILES build/pgdl.so
-        DESTINATION "${PostgreSQL_PKGLIB_DIR}/pgdl"
+        DESTINATION "${PostgreSQL_PKGLIB_DIR}/"
 )
 
 # install control file and sql file
