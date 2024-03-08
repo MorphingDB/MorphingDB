@@ -366,9 +366,6 @@ mvec_input(PG_FUNCTION_ARGS)
     
     str = PG_GETARG_CSTRING(0);
 
-    ereport(INFO,
-					(errmsg("str:%s",str)));
-
     parse_vector_str(str, &dim, x, &shape_size, shape);
 
     // Verify that the multiplication of shape values equals dim
@@ -387,12 +384,7 @@ mvec_input(PG_FUNCTION_ARGS)
     }
 
     for(int i=0; i<shape_size; ++i){
-        ereport(INFO,
-					(errmsg("shape[i]:%d", shape[i])));
         SET_MVEC_SHAPE_VAL(vector, i, shape[i]);
-
-        ereport(INFO,
-					(errmsg("shape1[i]:%d", GET_MVEC_SHAPE_VAL(vector, 0))));
     }
 
     pfree(x);

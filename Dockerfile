@@ -4,8 +4,7 @@ ARG PG_MAJOR
 
 COPY . /tmp/pgdl
 
-RUN sed -i "s@http://\(deb\|security\).debian.org@http://mirrors.tuna.tsinghua.edu.cn@g" /etc/apt/sources.list && \
-		apt-get update && \
+RUN     apt-get update && \
 		apt-get install -y --no-install-recommends build-essential postgresql-server-dev-12 cmake wget git pkg-config libgoogle-perftools-dev unzip ca-certificates && \
 		cd /tmp/pgdl/ && \
 		bash /tmp/pgdl/shell/download_build_thirdparty.sh && \
@@ -17,5 +16,9 @@ RUN sed -i "s@http://\(deb\|security\).debian.org@http://mirrors.tuna.tsinghua.e
 		make install && \
 		apt-get remove -y build-essential postgresql-server-dev-12 cmake wget git pkg-config libgoogle-perftools-dev unzip ca-certificates && \
 		apt-get autoremove -y && \
-		rm -rf /var/lib/apt/lists/*
+		rm -rf /var/lib/apt/lists/* && \
+		su postgres && \
+		psql -p 5432 -d postgres -c 'create extension pgdl;' \
+		psql -p 5432 -d postgres -f /tmp/pgdl/test/sql/docker_test.sql && \
+		psql -p 5432 -d postgres -f /tmp/pgdl/test/sql/vector_test.sql
 
