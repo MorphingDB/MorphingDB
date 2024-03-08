@@ -1,6 +1,6 @@
-# PGDL-Extension
+# MorphingDB-Extension
 
-postgres extension for supporting ai prediction
+MorphingDB extension for deep learning Prediction and storage vector type.
 
 # Quick Start
 
@@ -73,5 +73,6 @@ psql -p 5432 -d postgres
 
 ```
 psql -p 5432 -d postgres -f test/sql/docker_test.sql
+psql -p 5432 -d postgres -f test/sql/vector_test.sql
 ```
 

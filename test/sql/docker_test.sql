@@ -1,5 +1,3 @@
-create extension pgdl;
-
 -- create model
 SELECT create_model('sst2', '/tmp/pgdl/model/traced_albert.pt', 'nlp classification test');
 SELECT create_model('defect', '/tmp/pgdl/model/model.pt', 'image classification test');
@@ -92,7 +90,7 @@ FROM image_test;
 
 -- batch test
 SELECT nlp_test_2.comment, classification_results.category_name  
-FROM (select user_name, comment, predict_batch_float('sst2', 'cpu', comment) over (rows between current row and 15 following) as comment_2 from nlp_test ) as nlp_test_2
+FROM (select user_name, comment, predict_batch_float8('sst2', 'cpu', comment) over (rows between current row and 15 following) as comment_2 from nlp_test ) as nlp_test_2
 JOIN classification_results 
 ON nlp_test_2.comment_2 = classification_results.category;
 
@@ -106,7 +104,7 @@ FROM (select predict_batch_text('defect', 'cpu', image_url) over (rows between c
 JOIN defect_classification_results
 ON pred_cat = defect_classification_results.category_name;
 
-SELECT *, predict_batch_text('defect', 'cpu', image_url) over (rows between current row and 15 following) from image_test)
+SELECT *, predict_batch_text('defect', 'cpu', image_url) over (rows between current row and 15 following)
 AS result 
 FROM image_test;
 
