@@ -78,6 +78,10 @@ install(FILES build/pgdl.so
         DESTINATION "${PostgreSQL_PKGLIB_DIR}/"
 )
 
+install(FILES build/pgdl.so
+        DESTINATION "${PostgreSQL_PKGLIB_DIR}/pgdl"
+)
+
 # install control file and sql file
 install(FILES pgdl.control sql/pgdl--1.0.0.sql sql/pgdl--1.0.0--1.1.0.sql
         DESTINATION "${PostgreSQL_SHARE_DIR}/extension"
