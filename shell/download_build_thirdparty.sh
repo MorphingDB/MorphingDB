@@ -38,7 +38,7 @@ cd "$(dirname "$0")"
 script_path=$(pwd)
 
 # download sentencepiece
-git clone https://github.com/google/sentencepiece.git /tmp/pgdl/third_party/sentencepiece
+git clone https://github.com/google/sentencepiece.git /home/pgdl/third_party/sentencepiece
 if [[ $? -ne 0 ]]; then
     logerror "git clone sentencepiece error!"
     exit 1
