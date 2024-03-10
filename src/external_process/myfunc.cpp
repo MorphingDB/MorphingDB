@@ -86,7 +86,7 @@ bool SST2PreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
     // std::filesystem::path absolute_path = current_path / relative_path;
 
     //process.LoadOrDie("/home/lhh/postgres-DB4AI/src/udf/src/external_process/../model/spiece.model");
-    if(!process.Load("/tmp/pgdl/model/spiece.model").ok()){
+    if(!process.Load("/home/pgdl/model/spiece.model").ok()){
         return false;
     }
 
