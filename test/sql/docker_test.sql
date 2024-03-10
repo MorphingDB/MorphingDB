@@ -1,6 +1,6 @@
 -- create model
-SELECT create_model('sst2', '/tmp/pgdl/model/traced_albert.pt', 'nlp classification test');
-SELECT create_model('defect', '/tmp/pgdl/model/model.pt', 'image classification test');
+SELECT create_model('sst2', '/home/pgdl/model/traced_albert.pt', 'nlp classification test');
+SELECT create_model('defect', '/home/pgdl/model/model.pt', 'image classification test');
 
 -- create nlp test table
 CREATE TABLE IF NOT EXISTS nlp_test(user_name text, comment text);
@@ -37,18 +37,18 @@ CREATE TABLE IF NOT EXISTS image_test(
 -- add image
 INSERT INTO image_test(user_name, image_url)
 VALUES
-('bob', '/tmp/pgdl/test/image/img_10.jpg'), 
-('frank', '/tmp/pgdl/test/image/img_11.jpg'), 
-('bob', '/tmp/pgdl/test/image/img_12.jpg'), 
-('vicky', '/tmp/pgdl/test/image/img_1.jpg'), 
-('frank', '/tmp/pgdl/test/image/img_2.jpg'),
-('vicky', '/tmp/pgdl/test/image/img_3.jpg'), 
-('jeff', '/tmp/pgdl/test/image/img_4.jpg'), 
-('vicky', '/tmp/pgdl/test/image/img_5.jpg'), 
-('frank', '/tmp/pgdl/test/image/img_6.jpg'),
-('alice', '/tmp/pgdl/test/image/img_7.jpg'),
-('alice', '/tmp/pgdl/test/image/img_8.jpg'),
-('jeff', '/tmp/pgdl/test/image/img_9.jpg');
+('bob', '/home/pgdl/test/image/img_10.jpg'), 
+('frank', '/home/pgdl/test/image/img_11.jpg'), 
+('bob', '/home/pgdl/test/image/img_12.jpg'), 
+('vicky', '/home/pgdl/test/image/img_1.jpg'), 
+('frank', '/home/pgdl/test/image/img_2.jpg'),
+('vicky', '/home/pgdl/test/image/img_3.jpg'), 
+('jeff', '/home/pgdl/test/image/img_4.jpg'), 
+('vicky', '/home/pgdl/test/image/img_5.jpg'), 
+('frank', '/home/pgdl/test/image/img_6.jpg'),
+('alice', '/home/pgdl/test/image/img_7.jpg'),
+('alice', '/home/pgdl/test/image/img_8.jpg'),
+('jeff', '/home/pgdl/test/image/img_9.jpg');
 
 
 -- create image classification table
@@ -91,7 +91,7 @@ FROM image_test;
 -- batch test
 SELECT nlp_test_2.comment, classification_results.category_name  
 FROM (select user_name, comment, predict_batch_float8('sst2', 'cpu', comment) over (rows between current row and 15 following) as comment_2 from nlp_test ) as nlp_test_2
-JOIN classification_results 
+JOIN classification_results
 ON nlp_test_2.comment_2 = classification_results.category;
 
 SELECT comment,predict_batch_text('sst2', 'cpu', comment) over (rows between current row and 15 following)
