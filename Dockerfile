@@ -17,9 +17,5 @@ RUN     apt-get update && \
 		apt-get remove -y build-essential postgresql-server-dev-12 cmake wget git pkg-config libgoogle-perftools-dev unzip ca-certificates && \
 		apt-get autoremove -y && \
 		rm -rf /var/lib/apt/lists/* && \
-		#rm -rf /home/pgdl/third_party/ && \
-		su postgres && \
-		psql -p 5432 -d postgres -c 'create extension pgdl;' \
-		psql -p 5432 -d postgres -f /home/pgdl/test/sql/docker_test.sql && \
-		psql -p 5432 -d postgres -f /home/pgdl/test/sql/vector_test.sql
+		rm -rf /home/pgdl/third_party/sentencepiece && rm -rf /home/pgdl/third_party/opencv-3.4.16 
 
