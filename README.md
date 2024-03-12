@@ -166,3 +166,12 @@ select * from vec_test where vec=='[1,2.2,3.123,4.2]';
 MorphingDB will support the interconversion of libtorch vectors to mvec.
 
 
+## Reference
+
+[A Comparative Study of in-Database Inference Approaches](https://users.cs.utah.edu/~lifeifei/papers/icde22-indbinference.pdf)
+
+[Learning a Data-Driven Policy Network for Pre-Training Automated Feature Engineering](https://openreview.net/pdf?id=688hNNMigVX)
+
+[Pre-Trained Model Recommendation for Downstream Fine-tuning](https://arxiv.org/pdf/2403.06382.pdf)
+
+[SmartLite: A DBMS-based Serving System for DNN Inference in Resource-constrained Environments](https://www.vldb.org/pvldb/vol17/p278-wu.pdf)
