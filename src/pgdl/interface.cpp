@@ -1,9 +1,9 @@
 #include "model_manager.h"
 
-#include "interface.h"
 #include "unistd.h"
 #include "myfunc.h"
-#include "vector.h"
+#include "model_utils.h"
+#include <cstddef>
 #include <cstring>
 
 #ifdef __cplusplus
@@ -64,15 +64,21 @@ create_model(PG_FUNCTION_ARGS)
 {
     char* model_name = NULL;
     char* model_path = NULL;
+    char* base_model_name = NULL;
     char* discription = NULL;
+    std::string base_model_path;
+    int layer_size = 0;
+    int mvec_oid = 0;
+    ModelLayer* parameter_list = NULL;
 
-    if(PG_NARGS() != 3){
-        ereport(ERROR, (errmsg("CreateModel requires 3 parameters!")));
+    if(PG_NARGS() != 4){
+        ereport(ERROR, (errmsg("CreateModel requires 4 parameters!")));
     }
 
     model_name = PG_GETARG_CSTRING(0);
     model_path = PG_GETARG_CSTRING(1);
-    discription = PG_GETARG_CSTRING(2);
+    base_model_name = PG_GETARG_CSTRING(2);
+    discription = PG_GETARG_CSTRING(3);
 
     if(strlen(model_name) == 0){
         ereport(ERROR, (errmsg("model_name is empty!")));
@@ -82,11 +88,57 @@ create_model(PG_FUNCTION_ARGS)
         ereport(ERROR, (errmsg("model is not exist!")));
     }
 
-    if(model_manager.CreateModel(model_name, model_path, discription)){
-        PG_RETURN_BOOL(true);
-    }else {
-        ereport(ERROR, (errmsg("create model error!")));
+    if(strlen(base_model_name) == 0){
+        if(model_manager.CreateModel(model_name, model_path, base_model_name, discription)){
+            PG_RETURN_BOOL(true);
+        }else {
+            ereport(ERROR, (errmsg("create model error!")));
+        }
+    }else{
+        if(!model_manager.IsBaseModelExist(base_model_name)){
+            ereport(ERROR, (errmsg("base_model:%s not exist!", base_model_name)));
+        }
+        if(!model_manager.GetBaseModelPathFromBaseModel(base_model_name, base_model_path)){
+            ereport(ERROR, (errmsg("base_model:%s not exist!", base_model_name)));
+        }
+        int ret = compare_model_struct(model_path, base_model_path.c_str());
+        if(ret != 0){
+            ereport(ERROR, (errmsg("model struct is not equal, errcode:%d", ret)));
+        }
+        ereport(INFO, (errmsg("model struct equals")));
+
+        model_parameter_extraction(model_path, &parameter_list, layer_size);
+        if(parameter_list == NULL){
+            ereport(ERROR, (errmsg("model_parameter_extraction error!")));
+        }
+
+        ereport(INFO, (errmsg("model extraction success")));
+
+        if(!get_mvec_oid(mvec_oid)){
+            ereport(ERROR, (errmsg("get_mvec_oid error!")));
+        }
+
+        for(int i = 0; i<layer_size; i++){
+            if(!insert_model_layer_parameter(model_name, parameter_list[i].layer_name, i+1, mvec_oid, parameter_list[i].layer_parameter)){
+                ereport(ERROR, (errmsg("insert_model_layer_parameter error!")));
+            }
+        }
+
+        ereport(INFO, (errmsg("insert parameter success")));
+
+        for (int i = 0; i < layer_size; i++) {
+            pfree(parameter_list[i].layer_name);
+            pfree(parameter_list[i].layer_parameter);
+        }
+        pfree(parameter_list);
+
+        if(model_manager.CreateModel(model_name, model_path, base_model_name, discription)){
+            PG_RETURN_BOOL(true);
+        }else {
+            ereport(ERROR, (errmsg("create model error!")));
+        }
     }
+
     PG_RETURN_BOOL(false);
 }
 
@@ -123,6 +175,14 @@ drop_model(PG_FUNCTION_ARGS)
         PG_RETURN_BOOL(false);
     }
 
+
+    if(model_manager.HaveBaseModel(model_name)){
+        if(!delete_model_parameter(model_name)){
+            elog(ERROR,"delete model parameter error!");
+        }
+    }
+    
+
     if(model_manager.DropModel(model_name)){
         PG_RETURN_BOOL(true);
     }else {
@@ -158,7 +218,7 @@ predict_float(PG_FUNCTION_ARGS)
         ereport(ERROR, (errmsg("model not exist, can't get path!")));
     }
     
-    if(!model_manager.LoadModel(model_path)){
+    if(!model_manager.LoadModel(model_name, model_path)){
         ereport(ERROR, (errmsg("load model error")));
     }
 
@@ -262,7 +322,7 @@ predict_text(PG_FUNCTION_ARGS)
         ereport(ERROR, (errmsg("model not exist, can't get path!")));
     }
     
-    if(!model_manager.LoadModel(model_path)){
+    if(!model_manager.LoadModel(model_name, model_path)){
         ereport(ERROR, (errmsg("load model error")));
     }
 

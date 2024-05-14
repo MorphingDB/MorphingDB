@@ -1,8 +1,10 @@
 #include "model_manager.h"
-
+#include "model_utils.h"
 #include "spi_connection.h"
 #include "md5.h"
+#include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <unistd.h>
 
 
@@ -28,35 +30,59 @@ ModelManager::~ModelManager()
 
 bool ModelManager::CreateModel(const std::string model_name, 
                                const std::string model_path, 
+                               const std::string base_model, 
                                const std::string discription)
 {
-    std::string md5_value;
-
-    MD5 md5;
-    md5_value = md5.ComputeFileMD5(model_path);
 
     Oid userId = GetUserId(); 
-    char *userName = GetUserNameFromId(userId, false); 
+    char *userName = GetUserNameFromId(userId, false);
 
-    SPIConnector spi_connector;
+    if(base_model == ""){
+        std::string md5_value;
+        MD5 md5;
+        md5_value = md5.ComputeFileMD5(model_path); 
 
-    std::string prepare_str = "INSERT INTO model_info \
-        (model_name, model_path, create_time, update_time, md5, discription, upload_by) \
-        VALUES ($1, $2, now(), now(), $3, $4, $5)";
-    
-    SPISqlWrapper sql(spi_connector, prepare_str, 5);
+        SPIConnector spi_connector;
 
-    if(sql.Bind(1, TEXTOID, CStringGetTextDatum(model_name.c_str())) &&
-       sql.Bind(2, TEXTOID, CStringGetTextDatum(model_path.c_str())) &&
-       sql.Bind(3, TEXTOID, CStringGetTextDatum(md5_value.c_str())) && 
-       sql.Bind(4, TEXTOID, CStringGetTextDatum(discription.c_str())) &&
-       sql.Bind(5, TEXTOID, CStringGetTextDatum(userName)) &&
-       sql.Execute()){
-        if(SPI_processed != 1){
-           return false;
+        std::string prepare_str = "INSERT INTO model_info \
+            (model_name, model_path, create_time, update_time, md5, discription, upload_by) \
+            VALUES ($1, $2, now(), now(), $3, $4, $5)";
+        
+        SPISqlWrapper sql(spi_connector, prepare_str, 5);
+
+        if(sql.Bind(1, TEXTOID, CStringGetTextDatum(model_name.c_str())) &&
+        sql.Bind(2, TEXTOID, CStringGetTextDatum(model_path.c_str())) &&
+        sql.Bind(3, TEXTOID, CStringGetTextDatum(md5_value.c_str())) && 
+        sql.Bind(4, TEXTOID, CStringGetTextDatum(discription.c_str())) &&
+        sql.Bind(5, TEXTOID, CStringGetTextDatum(userName)) &&
+        sql.Execute()){
+            if(SPI_processed != 1){
+                return false;
+            }
+        }else{
+            return false;
         }
     }else{
-        return false;
+        SPIConnector spi_connector;
+
+        std::string prepare_str = "INSERT INTO model_info \
+            (model_name, model_path, create_time, update_time, discription, upload_by, base_model) \
+            VALUES ($1, $2, now(), now(), $3, $4, $5)";
+        
+        SPISqlWrapper sql(spi_connector, prepare_str, 5);
+
+        if(sql.Bind(1, TEXTOID, CStringGetTextDatum(model_name.c_str())) &&
+        sql.Bind(2, TEXTOID, CStringGetTextDatum(model_path.c_str())) &&
+        sql.Bind(3, TEXTOID, CStringGetTextDatum(discription.c_str())) && 
+        sql.Bind(4, TEXTOID, CStringGetTextDatum(userName)) &&
+        sql.Bind(5, TEXTOID, CStringGetTextDatum(base_model.c_str())) &&
+        sql.Execute()){
+            if(SPI_processed != 1){
+                return false;
+            }
+        }else{
+            return false;
+        }
     }
     
     return true;
@@ -136,16 +162,19 @@ bool ModelManager::GetModelPath(const std::string model_name,
 }
 
 bool ModelManager::GetModelMd5(const std::string model_path, 
+                               const std::string model_name,
                                std::string& md5)
 {
     SPIConnector spi_connector;
 
     std::string prepare_str = "SELECT md5 FROM model_info \
-                               WHERE model_path=$1";
+                               WHERE model_path=$1 \
+                               AND model_name=$2";
 
-    SPISqlWrapper sql(spi_connector, prepare_str, 1);
+    SPISqlWrapper sql(spi_connector, prepare_str, 2);
 
     if(sql.Bind(1, TEXTOID, CStringGetTextDatum(model_path.c_str())) && 
+       sql.Bind(2, TEXTOID, CStringGetTextDatum(model_name.c_str())) &&
        sql.Execute()){
         if(SPI_processed != 1){
             return false;
@@ -204,32 +233,101 @@ bool ModelManager::GetLastModelVersion(const std::string model_name,
     return true;
 }
 
-bool ModelManager::LoadModel(std::string model_path)
+bool ModelManager::LoadModel(std::string model_name, std::string model_path)
 {
+    std::string table_md5, file_md5, base_model_path;
+    int32_t layer_size=0;
+    MD5 md5;
+    torch::jit::script::Module cur_module;
     if(module_handle_.find(model_path) != module_handle_.end()){
         return true;
     }
-    // Verify the md5 of the model in the file system and the md5 of the database
-    std::string table_md5, file_md5;
-    MD5 md5;
-    file_md5 = md5.ComputeFileMD5(model_path);
-    GetModelMd5(model_path, table_md5);
-    if(file_md5 != table_md5){
-        return false;
+    // not base on base model
+    if(!HaveBaseModel(model_name)){
+        // Verify the md5 of the model in the file system and the md5 of the database
+        file_md5 = md5.ComputeFileMD5(model_path);
+        GetModelMd5(model_path, model_name, table_md5);
+        if(file_md5 != table_md5){
+            return false;
+        }
+
+        try {
+            cur_module = torch::jit::load(model_path.c_str());
+            module_handle_[model_path].first = cur_module;
+            // cpu default
+            module_handle_[model_path].second = at::kCPU;
+            module_handle_[model_path].first.to(at::kCPU);
+            cur_module.eval();
+            //return true;
+        }
+        catch (const std::exception& e) {
+            ereport(INFO, (errmsg("error message:%s.", e.what())));
+            return false;
+        }
+    // base on base model
+    }else{
+        GetBaseModelPathFromModel(model_name, base_model_path);
+        ereport(INFO, (errmsg("%s", base_model_path.c_str())));
+        
+        try {
+            cur_module = torch::jit::load(base_model_path.c_str());
+            module_handle_[model_path].first = cur_module;
+            // cpu default
+            module_handle_[model_path].second = at::kCPU;
+            module_handle_[model_path].first.to(at::kCPU);
+            cur_module.eval();
+            //return true;
+        }
+        catch (const std::exception& e) {
+            ereport(INFO, (errmsg("error message:%s.", e.what())));
+            return false;
+        }
+
+        auto layer_tensor_parms = module_handle_[model_path].first.named_parameters();
+        auto layer_tensor_bufs = module_handle_[model_path].first.named_buffers();
+
+        if(!get_model_layer_size(model_name.c_str(), layer_size)){
+            return false;
+        }
+
+        if(layer_size != (layer_tensor_parms.size() + layer_tensor_bufs.size())){
+            ereport(ERROR,
+                    errmsg("model \"%s\" layer num not equal to base model", model_name.c_str()));
+        }
+
+
+        for(const auto& parm : layer_tensor_parms){
+            torch::Tensor base_model_layer_tensor = parm.value.detach_();
+            torch::Tensor layer_tensor;
+            if(get_model_layer_parameter(model_name.c_str(), parm.name.c_str(), layer_tensor)){
+                // resize fc layer
+                if(parm.name.find("fc") != std::string::npos) {
+                    try{
+                        base_model_layer_tensor.resize_(layer_tensor.sizes());
+                    }
+                    catch (const std::exception& e) {
+                        ereport(INFO, (errmsg("error message:%s.", e.what())));
+                        return false;
+                    }   
+                }
+                base_model_layer_tensor.copy_(layer_tensor);
+            }
+            ereport(INFO, (errmsg("layer_name:%s,%d", parm.name.c_str(), parm.value.numel())));
+        }
+
+        for(const auto& parm : layer_tensor_bufs){
+            torch::Tensor base_model_layer_tensor = parm.value.detach_();
+            torch::Tensor layer_tensor;
+            
+            if(get_model_layer_parameter(model_name.c_str(), parm.name.c_str(), layer_tensor)){
+                base_model_layer_tensor.copy_(layer_tensor);
+            }
+            ereport(INFO, (errmsg("layer_name:%s,%d", parm.name.c_str(), parm.value.numel())));
+        }
+        //module_handle_[model_path].first.save("/home/lhh/test.pt");
     }
 
-    try {
-        torch::jit::script::Module cur_module = torch::jit::load(model_path.c_str());
-        module_handle_[model_path].first = cur_module;
-        // cpu default
-        module_handle_[model_path].second = at::kCPU;
-        module_handle_[model_path].first.to(at::kCPU);
-        cur_module.eval();
-        return true;
-    }
-    catch (const std::exception& e) {
-        return false;
-    }
+    return true;
 }
 
 bool ModelManager::SetCuda(const std::string& model_path)
@@ -332,6 +430,110 @@ void ModelManager::RegisterOutoutProcessText(const std::string& model_name,
     }
 }
 
+bool ModelManager::GetBaseModelPathFromModel(const std::string model_name, 
+                                    std::string& base_model_path)
+{
+    SPIConnector spi_connector;
+
+    std::string prepare_str = "SELECT \
+                                    bmi.base_model_path \
+                                FROM \
+                                    model_info mi \
+                                JOIN \
+                                    base_model_info bmi \
+                                ON \
+                                    mi.base_model = bmi.base_model_name \
+                                WHERE \
+                                    mi.model_name = $1";
+
+    SPISqlWrapper sql(spi_connector, prepare_str, 1);
+
+    if(sql.Bind(1, TEXTOID, CStringGetTextDatum(model_name.c_str())) && 
+       sql.Execute()){
+        if(SPI_processed != 1){
+            return false;
+        }
+    }
+    
+    // 获取select 语句结果
+    HeapTuple tuple = SPI_tuptable->vals[0];
+    base_model_path = SPI_getvalue(tuple, SPI_tuptable->tupdesc, 1);
+
+    return true;
+}
+bool ModelManager::GetBaseModelPathFromBaseModel(const std::string base_model_name, 
+                          std::string& base_model_path)
+{
+    SPIConnector spi_connector;
+    std::string prepare_str = "SELECT base_model_path FROM base_model_info \
+                               WHERE base_model_name=$1";
+
+    SPISqlWrapper sql(spi_connector, prepare_str, 1);
+
+    if(sql.Bind(1, TEXTOID, CStringGetTextDatum(base_model_name.c_str())) && 
+       sql.Execute()){
+        if(SPI_processed != 1){
+            return false;
+        }
+    }
+    
+    // get result
+    HeapTuple tuple = SPI_tuptable->vals[0];
+    base_model_path = SPI_getvalue(tuple, SPI_tuptable->tupdesc, 1);
+
+    return true;
+}
+
+bool ModelManager::HaveBaseModel(const std::string model_name)
+{
+    SPIConnector spi_connector;
+
+    std::string prepare_str = "SELECT base_model FROM model_info \
+                               WHERE model_name=$1";
+
+    SPISqlWrapper sql(spi_connector, prepare_str, 1);
+
+    if(sql.Bind(1, TEXTOID, CStringGetTextDatum(model_name.c_str())) && 
+       sql.Execute()){
+        if(SPI_processed != 1){
+            return false;
+        }
+    }
+    
+
+    HeapTuple tuple = SPI_tuptable->vals[0];
+
+    if(SPI_getvalue(tuple, SPI_tuptable->tupdesc, 1) == NULL){
+        return false;
+    }
+
+    return true;
+}
+
+bool ModelManager::IsBaseModelExist(const std::string base_model_name)
+{
+    SPIConnector spi_connector;
+
+    std::string prepare_str = "SELECT count(*) FROM base_model_info \
+                               WHERE base_model_name=$1";
+
+    SPISqlWrapper sql(spi_connector, prepare_str, 1);
+
+    if(sql.Bind(1, TEXTOID, CStringGetTextDatum(base_model_name.c_str())) && 
+       sql.Execute()){
+        if(SPI_processed != 1){
+            return false;
+        }
+    }
+    
+    HeapTuple tuple = SPI_tuptable->vals[0];
+    if(atoi(SPI_getvalue(tuple, SPI_tuptable->tupdesc, 1)) == 0){
+        return false;
+    }
+
+    return true;
+}
+
 // bool ModelManager::Predict(const std::string& model_path, 
 //                            at::Tensor& input, 
 //                            at::Tensor& output)
@@ -378,6 +580,7 @@ bool ModelManager::Predict(const std::string& model_path,
                  torch::jit::IValue& output)
 {
     if(module_handle_.find(model_path) == module_handle_.end()){
+        ereport(INFO, (errmsg("flag1:%s.", "lai")));
         return false;
     }
     try {
@@ -385,6 +588,7 @@ bool ModelManager::Predict(const std::string& model_path,
         return true;
     }
     catch (const std::exception& e) {
+        ereport(INFO, (errmsg("error message:%s.", e.what())));
         return false;
     }
 }

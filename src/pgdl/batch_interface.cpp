@@ -212,7 +212,7 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
     }
 
     // 1. 加载模型
-    if(!model_manager.LoadModel(model_path)){
+    if(!model_manager.LoadModel(state->model, model_path)){
         model_path.clear();
         ereport(ERROR, (errmsg("load model error")));
     }
@@ -267,7 +267,6 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
             CLEAN_UP_CPP_OBJS();
             ereport(ERROR, (errmsg("%s:predict error!", model_path)));
         }
-
         CLOCK_END(infer);
     }
     
@@ -275,32 +274,34 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
     // 5. 结果处理
     {
         CLOCK_START();
+        try{
+            outputs = split_results(output);
+            if (outputs.empty()) {
+                CLEAN_UP_CPP_OBJS();
+                ereport(ERROR, (errmsg("cannot handle the result type from model!")));
+            }
 
-        outputs = split_results(output);
-        if (outputs.empty()) {
-            CLEAN_UP_CPP_OBJS();
-            ereport(ERROR, (errmsg("cannot handle the result type from model!")));
+            for (int i = 0; i < prcsd_batch_n; i++)
+                state->outs = lappend(state->outs, palloc0(sizeof(Args)));
+
+            for (int i = 0; i < prcsd_batch_n; i++) {
+                pool.emplace_back([&, i](){
+                    Args* in = (Args*)list_nth(state->ins, i);
+                    torch::jit::IValue wrapped_out(outputs[i]);
+                    if (ret_float8) {
+                        float8& out = ((Args*)list_nth(state->outs, i))->floating;
+                        res[i] = model_manager.OutputProcessFloat(model_path, wrapped_out, in, out);
+                    } else {
+                        std::string result_str;
+                        res[i] = model_manager.OutputProcessText(model_path, wrapped_out, in, result_str);   
+                        ((Args*)list_nth(state->outs, i))->ptr = pstrdup(result_str.c_str());
+                    }
+                });
+            }
+            WAIT_AND_CHECK_ERROR("postprocess");
+        }catch (const std::exception& e) {
+            elog(INFO, "error message:%s", e.what());
         }
-
-        for (int i = 0; i < prcsd_batch_n; i++)
-            state->outs = lappend(state->outs, palloc0(sizeof(Args)));
-
-        for (int i = 0; i < prcsd_batch_n; i++) {
-            pool.emplace_back([&, i](){
-                Args* in = (Args*)list_nth(state->ins, i);
-                torch::jit::IValue wrapped_out(outputs[i]);
-                if (ret_float8) {
-                    float8& out = ((Args*)list_nth(state->outs, i))->floating;
-                    res[i] = model_manager.OutputProcessFloat(model_path, wrapped_out, in, out);
-                } else {
-                    std::string result_str;
-                    res[i] = model_manager.OutputProcessText(model_path, wrapped_out, in, result_str);   
-                    ((Args*)list_nth(state->outs, i))->ptr = pstrdup(result_str.c_str());
-                }
-            });
-        }
-        WAIT_AND_CHECK_ERROR("postprocess");
-
         CLOCK_END(post);
     }
 
