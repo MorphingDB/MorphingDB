@@ -1,11 +1,14 @@
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
-#include "postgres.h"
+#include <torch/torch.h>
+#include <torch/script.h>
+#include <string>
+
 #ifdef __cplusplus
 extern "C"
 {
+#include <stddef.h>
+#include <stdint.h>
 #else
 #include <stdbool.h>
 #include <stddef.h>
@@ -89,16 +92,17 @@ extern "C"
 	//MVec *parse_mvec_str(char *str);
 	//void parse_mvec_shape_str(char *shape_str, int32_t *shape_size, int32_t *shape);
     void parse_vector_shape_str(char* shape_str, unsigned int* shape_size, int* shape);
-    void parse_vector_str(char* str, unsigned int* dim, float* x, unsigned int* shape_size, int32* shape);
+    void parse_vector_str(char* str, unsigned int* dim, float* x, unsigned int* shape_size, int32_t* shape);
 	bool shape_equal(MVec *left, MVec *right);
 
-
-
 	extern volatile Oid mvec_type_id;
+
+void mvec_to_str(MVec *mvec, std::string& str);
+// tensor 与 Mvec的互相转换
+MVec* tensor_to_vector(torch::Tensor& tensor);
+torch::Tensor vector_to_tensor(MVec* vector);
 #ifdef __cplusplus
 }
-
-// Mvec* tensor_to_vector(torch::Tensor& tensor);
-// torch::Tensor vector_to_tensor(Mvec& vector);
-
 #endif
+
+

@@ -12,9 +12,9 @@ CREATE OR REPLACE FUNCTION modify_model(IN model_name cstring, IN model_path cst
     AS 'MODULE_PATHNAME', 'modify_model' LANGUAGE C;
 CREATE OR REPLACE FUNCTION drop_model(IN model_name cstring, OUT boolean)
     AS 'MODULE_PATHNAME', 'drop_model' LANGUAGE C STRICT;
-CREATE OR REPLACE FUNCTION predict_float(IN model_name cstring, IN type cstring, IN url text, OUT float)
+CREATE OR REPLACE FUNCTION predict_float(IN model_name cstring, IN type cstring, VARIADIC vec "any", OUT float)
     AS 'MODULE_PATHNAME', 'predict_float' LANGUAGE C STRICT;
-CREATE OR REPLACE FUNCTION predict_text(IN model_name cstring, IN type cstring, IN url text, OUT text)
+CREATE OR REPLACE FUNCTION predict_text(IN model_name cstring, IN type cstring, VARIADIC vec "any", OUT text)
     AS 'MODULE_PATHNAME', 'predict_text' LANGUAGE C STRICT;
 CREATE OR REPLACE FUNCTION register_process(OUT void)
     AS 'MODULE_PATHNAME', 'register_process' LANGUAGE C STRICT;

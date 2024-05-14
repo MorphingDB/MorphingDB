@@ -38,7 +38,7 @@ public:
      * @param {string } model_path
      * @return {*}
      */    
-    bool LoadModel(std::string  model_path);
+    bool LoadModel(std::string model_name, std::string  model_path);
 
     /**
      * @description: 
@@ -50,7 +50,8 @@ public:
      * @return {*}
      */    
     bool CreateModel(const std::string model_name, 
-                     const std::string model_path, 
+                     const std::string model_path,
+                     const std::string base_model, 
                      const std::string discription);
 
     /**
@@ -84,14 +85,25 @@ public:
     bool GetModelDeviceType(const std::string model_name,
                             torch::DeviceType& device_type);
 
+    bool GetBaseModelPathFromBaseModel(const std::string base_model_name, 
+                          std::string& base_model_path);
+
+    bool GetBaseModelPathFromModel(const std::string model_name, 
+                          std::string& base_model_path);
+
+    bool HaveBaseModel(const std::string model_name);
+
+    bool IsBaseModelExist(const std::string base_model_name);
     /**
      * @description: 
      * @event: 
      * @param {string} model_path
+     * @param {string} model_name
      * @param {string&} md5 
      * @return {*}
      */    
     bool GetModelMd5(const std::string model_path, 
+                     const std::string model_name,
                      std::string& md5);
 
     /**
