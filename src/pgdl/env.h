@@ -17,7 +17,7 @@
 #include <torch/script.h>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/opencv.hpp>
-
+#include <opencv2/dnn.hpp>
 
 #ifdef __cplusplus
 extern "C" {
