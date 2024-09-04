@@ -2,9 +2,13 @@
 
 #include "unistd.h"
 #include "myfunc.h"
+#include "embedding.h"
 #include "model_utils.h"
+#include "vector.h"
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +62,29 @@ PG_FUNCTION_INFO_V1(mvec_sub);
 PG_FUNCTION_INFO_V1(mvec_equal);
 
 PG_FUNCTION_INFO_V1(mvec_am_handler);
+
+// image pre process
+PG_FUNCTION_INFO_V1(image_pre_process);
+// text pre process
+PG_FUNCTION_INFO_V1(text_pre_process);
+
+// print cost time
+PG_FUNCTION_INFO_V1(print_cost);
+
+
+typedef struct TimeFilter {
+    int64_t load_model_time; //ms
+    int64_t pre_time;   // ms
+    int64_t infer_time; // ms
+    int64_t post_time;  // ms
+} TimeFilter;
+
+TimeFilter time_filter;
+
+extern bool debug_print_batch_time;
+
+#define CLOCK_START() auto start = std::chrono::system_clock::now()
+#define CLOCK_END(type) time_filter.type##_time += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - start).count()
 
 Datum
 create_model(PG_FUNCTION_ARGS)
@@ -199,6 +226,7 @@ predict_float(PG_FUNCTION_ARGS)
     char*           cuda = NULL;
     char*           text_array = NULL;
     int             num_elems = 0;
+    int             mvec_oid = 0;
     char*           ret_str = NULL;
 
     Args*           args = (Args*)palloc((PG_NARGS()-2) * sizeof(Args)); 
@@ -209,7 +237,12 @@ predict_float(PG_FUNCTION_ARGS)
     model_name = PG_GETARG_CSTRING(0);
     cuda       = PG_GETARG_CSTRING(1);
 
+    if(!get_mvec_oid(mvec_oid)){
+        ereport(ERROR, (errmsg("get mvec oid error!")));
+    }
+
     // 1. load model
+
     if(strlen(model_name) == 0){
         ereport(ERROR, (errmsg("model name is empty!")));
     }
@@ -217,9 +250,13 @@ predict_float(PG_FUNCTION_ARGS)
     if(!model_manager.GetModelPath(model_name, model_path)){
         ereport(ERROR, (errmsg("model not exist, can't get path!")));
     }
-    
-    if(!model_manager.LoadModel(model_name, model_path)){
-        ereport(ERROR, (errmsg("load model error")));
+
+    {
+        CLOCK_START();
+        if(!model_manager.LoadModel(model_name, model_path)){
+            ereport(ERROR, (errmsg("load model error")));
+        }
+        CLOCK_END(load_model);
     }
 
     // 2. choose cpu or gpu to predict
@@ -230,65 +267,72 @@ predict_float(PG_FUNCTION_ARGS)
 
     // 3. get all col for input
     for (int i = 2; i < PG_NARGS(); i++) {
-        switch (get_fn_expr_argtype(fcinfo->flinfo, i)) {
-            case INT4OID:
-            case INT2OID:
-            case INT8OID:
-            {
-                int cur_int = PG_GETARG_INT32(i);
-                args[i-2].integer = cur_int;
-                break;
-            }
-            case FLOAT4OID:
-            case FLOAT8OID:
-            {
-                float8 cur_float = PG_GETARG_FLOAT8(i);
-                args[i-2].floating = cur_float;
-                break;
-            }
-            case TEXTOID:
-            {
-                char* cur_text = TextDatumGetCString(PG_GETARG_DATUM(i));
-                args[i-2].ptr = cur_text;
-                break;
-            }
-            case CSTRINGOID:
-            {
-                char* cur_cstring = PG_GETARG_CSTRING(i);
-                args[i-2].ptr = cur_cstring;
-                break;
-            }
-            case NUMERICOID:
-            {
-                Datum numer = PG_GETARG_DATUM(i);
-                float8 num_float = DatumGetFloat8(DirectFunctionCall1(numeric_float8, numer));;
-                args[i-2].floating = num_float;
-                break;
-            }
-            default:
-            {
-                ereport(ERROR, (errmsg("%d type don't support!", get_fn_expr_argtype(fcinfo->flinfo, i))));
-                break;
-            }
+        Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+        if(argtype == INT4OID || argtype == INT2OID || argtype == INT8OID){
+            int cur_int = PG_GETARG_INT32(i);
+            args[i-2].integer = cur_int;
+        }else if(argtype == FLOAT4OID || argtype == FLOAT8OID){
+            float8 cur_float = PG_GETARG_FLOAT8(i);
+            args[i-2].floating = cur_float;
+        }else if(argtype == TEXTOID){
+            char* cur_text = TextDatumGetCString(PG_GETARG_DATUM(i));
+            args[i-2].ptr = cur_text;
+        }else if(argtype == CSTRINGOID){
+            char* cur_cstring = PG_GETARG_CSTRING(i);
+            args[i-2].ptr = cur_cstring;
+        }else if(argtype == NUMERICOID){
+            Datum numer = PG_GETARG_DATUM(i);
+            float8 num_float = DatumGetFloat8(DirectFunctionCall1(numeric_float8, numer));;
+            args[i-2].floating = num_float;
+        }else if(argtype == mvec_oid){
+            MVec* cur_mvec = DatumGetMVec(PG_GETARG_DATUM(i));
+            args[i-2].ptr = cur_mvec;
+        }else{
+            ereport(ERROR, (errmsg("%d type don't support!", get_fn_expr_argtype(fcinfo->flinfo, i))));
         }
     }
 
     // 4. run preprocess callback function
     std::vector<torch::jit::IValue> preprecess_tensor;
     torch::jit::IValue output_tensor;
-    if(!model_manager.PreProcess(model_path, preprecess_tensor, args)){
-        ereport(ERROR, (errmsg("preprocess error!")));
+
+    {
+        try {
+            CLOCK_START();
+            if(!model_manager.PreProcess(model_path, preprecess_tensor, args)){
+                ereport(ERROR, (errmsg("preprocess error!")));
+            }
+            CLOCK_END(pre);
+        } catch (const std::exception& e){
+            ereport(ERROR, (errmsg("preprocess error! error message:%s", e.what())));
+        }
     }
 
-    // 5. predict by preprocess output
-    if(!model_manager.Predict(model_path, preprecess_tensor, output_tensor)){
-        ereport(ERROR, (errmsg("predict error!")));
+    {
+        try {
+            CLOCK_START();
+            // 5. predict by preprocess output
+            if(!model_manager.Predict(model_path, preprecess_tensor, output_tensor)){
+                ereport(ERROR, (errmsg("predict error!")));
+            }
+            CLOCK_END(infer);
+        } catch (const std::exception& e){
+            ereport(ERROR, (errmsg("predict error! error message:%s", e.what())));
+        }
     }
 
     // 6. run outputprocess callback funtion
     float8 result;
-    if(!model_manager.OutputProcessFloat(model_path, output_tensor, args, result)){
-        ereport(ERROR, (errmsg("output process error!")));
+    {
+        try {
+            CLOCK_START();
+            if(!model_manager.OutputProcessFloat(model_path, output_tensor, args, result)){
+                ereport(ERROR, (errmsg("output process error!")));
+            }
+            CLOCK_END(post);
+        } catch (const std::exception& e){
+            ereport(ERROR, (errmsg("output process error! error message:%s", e.what())));
+        }
     }
     
 
@@ -303,6 +347,7 @@ predict_text(PG_FUNCTION_ARGS)
     char*           cuda = NULL;
     char*           text_array = NULL;
     int             num_elems = 0;
+    int             mvec_oid = 0;
     char*           ret_str = NULL;
 
     Args*           args = (Args*)palloc((PG_NARGS()-2) * sizeof(Args)); 
@@ -313,6 +358,10 @@ predict_text(PG_FUNCTION_ARGS)
     model_name = PG_GETARG_CSTRING(0);
     cuda       = PG_GETARG_CSTRING(1);
 
+    if(!get_mvec_oid(mvec_oid)){
+        ereport(ERROR, (errmsg("get mvec oid error!")));
+    }
+
      // 1. load model
     if(strlen(model_name) == 0){
         ereport(ERROR, (errmsg("model name is empty!")));
@@ -322,8 +371,14 @@ predict_text(PG_FUNCTION_ARGS)
         ereport(ERROR, (errmsg("model not exist, can't get path!")));
     }
     
-    if(!model_manager.LoadModel(model_name, model_path)){
-        ereport(ERROR, (errmsg("load model error")));
+    {
+        CLOCK_START();
+
+        if(!model_manager.LoadModel(model_name, model_path)){
+            ereport(ERROR, (errmsg("load model error")));
+        }
+
+        CLOCK_END(load_model);
     }
 
     // 2. choose cpu or gpu to predict
@@ -334,46 +389,28 @@ predict_text(PG_FUNCTION_ARGS)
 
     // 3. get all col for input
     for (int i = 2; i < PG_NARGS(); i++) {
-        switch (get_fn_expr_argtype(fcinfo->flinfo, i)) {
-            case INT4OID:
-            case INT2OID:
-            case INT8OID:
-            {
-                int cur_int = PG_GETARG_INT32(i);
-                args[i-2].integer = cur_int;
-                break;
-            }
-            case FLOAT4OID:
-            case FLOAT8OID:
-            {
-                float8 cur_float = PG_GETARG_FLOAT8(i);
-                args[i-2].floating = cur_float;
-                break;
-            }
-            case TEXTOID:
-            {
-                char* cur_text = TextDatumGetCString(PG_GETARG_DATUM(i));
-                args[i-2].ptr = cur_text;
-                break;
-            }
-            case CSTRINGOID:
-            {
-                char* cur_cstring = PG_GETARG_CSTRING(i);
-                args[i-2].ptr = cur_cstring;
-                break;
-            }
-            case NUMERICOID:
-            {
-                Datum numer = PG_GETARG_DATUM(i);
-                float8 num_float = DatumGetFloat8(DirectFunctionCall1(numeric_float8, numer));;
-                args[i-2].floating = num_float;
-                break;
-            }
-            default:
-            {
-                ereport(ERROR, (errmsg("%d type don't support!", get_fn_expr_argtype(fcinfo->flinfo, i))));
-                break;
-            }
+        Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+        if(argtype == INT4OID || argtype == INT2OID || argtype == INT8OID){
+            int cur_int = PG_GETARG_INT32(i);
+            args[i-2].integer = cur_int;
+        }else if(argtype == FLOAT4OID || argtype == FLOAT8OID){
+            float8 cur_float = PG_GETARG_FLOAT8(i);
+            args[i-2].floating = cur_float;
+        }else if(argtype == TEXTOID){
+            char* cur_text = TextDatumGetCString(PG_GETARG_DATUM(i));
+            args[i-2].ptr = cur_text;
+        }else if(argtype == CSTRINGOID){
+            char* cur_cstring = PG_GETARG_CSTRING(i);
+            args[i-2].ptr = cur_cstring;
+        }else if(argtype == NUMERICOID){
+            Datum numer = PG_GETARG_DATUM(i);
+            float8 num_float = DatumGetFloat8(DirectFunctionCall1(numeric_float8, numer));;
+            args[i-2].floating = num_float;
+        }else if(argtype == mvec_oid){
+            MVec* cur_mvec = DatumGetMVec(PG_GETARG_DATUM(i));
+            args[i-2].ptr = cur_mvec;
+        }else{
+            ereport(ERROR, (errmsg("%d type don't support!", get_fn_expr_argtype(fcinfo->flinfo, i))));
         }
     }
 
@@ -381,20 +418,38 @@ predict_text(PG_FUNCTION_ARGS)
     // 4. run preprocess callback function
     std::vector<torch::jit::IValue> preprecess_tensor;
     torch::jit::IValue output_tensor;
-    if(!model_manager.PreProcess(model_path, preprecess_tensor, args)){
-        ereport(ERROR, (errmsg("preprocess error!")));
+    {
+        CLOCK_START();
+
+        if(!model_manager.PreProcess(model_path, preprecess_tensor, args)){
+            ereport(ERROR, (errmsg("preprocess error!")));
+        }
+
+        CLOCK_END(pre);
     }
 
     // 5. predict by preprocess output
-    if(!model_manager.Predict(model_path, preprecess_tensor, output_tensor)){
-        ereport(ERROR, (errmsg("predict error!")));
+    {
+        CLOCK_START();
+
+        if(!model_manager.Predict(model_path, preprecess_tensor, output_tensor)){
+            ereport(ERROR, (errmsg("predict error!")));
+        }
+
+        CLOCK_END(infer);
     }
     
     // 6. run outputprocess callback funtion
     text* result = nullptr;
     std::string result_str;
-    if(!model_manager.OutputProcessText(model_path, output_tensor, args, result_str)){
+    {
+        CLOCK_START();
 
+        if(!model_manager.OutputProcessText(model_path, output_tensor, args, result_str)){
+
+        }
+
+        CLOCK_END(post);
     }
 
     result = (text*)palloc(result_str.size() + VARHDRSZ);
@@ -852,6 +907,74 @@ mvec_equal(PG_FUNCTION_ARGS)
     }
 
     PG_RETURN_BOOL(true);
+}
+
+Datum
+image_pre_process(PG_FUNCTION_ARGS)
+{
+    int32_t width = 0;
+    int32_t height = 0;
+    float8  norm_mean = 0;
+    float8  norm_std = 0;
+    MVec*   ret = NULL;
+    char*   image_url = NULL;
+
+
+    width = PG_GETARG_INT32(0);
+    height = PG_GETARG_INT32(1);
+    norm_mean = PG_GETARG_FLOAT8(2);
+    norm_std = PG_GETARG_FLOAT8(3);
+    image_url = TextDatumGetCString(PG_GETARG_DATUM(4));
+
+    if(width <= 0 || height <= 0){
+        ereport(ERROR,
+					(errmsg("width and height must be greater than 0")));
+    }
+
+    ret = image_to_vector(width, height, norm_mean, norm_std, image_url);
+
+    PG_RETURN_POINTER(ret);
+
+}
+
+Datum 
+text_pre_process(PG_FUNCTION_ARGS)
+{
+    char*   text_a = NULL;
+    MVec*   ret = NULL;
+
+    text_a = TextDatumGetCString(PG_GETARG_DATUM(0));
+
+    ret = text_to_vector(text_a);
+    
+    PG_RETURN_POINTER(ret);
+}
+
+Datum
+print_cost(PG_FUNCTION_ARGS)
+{
+    int64_t total = time_filter.load_model_time + 
+                    time_filter.pre_time + 
+                    time_filter.infer_time + 
+                    time_filter.post_time;
+    char message[1024];
+    snprintf(message, sizeof(message),
+             "\n total: %ld ms\n"
+             " load model: %ld ms(%.2f%%)\n"
+             " pre process: %ld ms(%.2f%%)\n"
+             " infer: %ld ms(%.2f%%)\n"
+             " post process: %ld ms(%.2f%%)",
+             total,
+             time_filter.load_model_time, (double)time_filter.load_model_time * 100 / total,
+             time_filter.pre_time, (double)time_filter.pre_time * 100 / total,
+             time_filter.infer_time, (double)time_filter.infer_time * 100 / total,
+             time_filter.post_time, (double)time_filter.post_time * 100 / total);
+
+    // 将C字符串转换为TEXT Datum
+    Datum result = CStringGetTextDatum(message);
+
+    // 返回TEXT Datum
+    PG_RETURN_DATUM(result);
 }
 
 #ifdef __cplusplus

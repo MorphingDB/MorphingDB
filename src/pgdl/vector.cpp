@@ -337,7 +337,7 @@ tensor_to_vector(torch::Tensor& tensor)
         return vector;
     }
 
-    torch::Tensor flattened_tensor = tensor.view({-1});
+    torch::Tensor flattened_tensor = tensor.reshape({-1});
     float* data_ptr = flattened_tensor.data_ptr<float>();
     for (int i = 0; i < flattened_tensor.numel(); ++i) {
         SET_MVEC_VAL(vector, i, data_ptr[i]);
