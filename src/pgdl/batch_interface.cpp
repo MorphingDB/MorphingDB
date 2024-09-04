@@ -4,6 +4,8 @@
 
 
 #include "model_manager.h"
+#include "model_utils.h"
+#include "vector.h"
 
 extern "C" {
 #include "postgres.h"
@@ -15,12 +17,19 @@ extern "C" {
 #include "utils/builtins.h"
 #include "utils/palloc.h"
 
+typedef struct TimeFilter {
+    int64_t load_model_time; //ms
+    int64_t pre_time;   // ms
+    int64_t infer_time; // ms
+    int64_t post_time;  // ms
+} TimeFilter;
 
 // args are "state, model, cuda, vector_elements.."
 #define VECTOR_START_ARG_INDEX 3
 
 static bool debug_print_batch_time;
 extern ModelManager model_manager;
+extern TimeFilter time_filter;
 
 typedef struct VecAggState {
     MemoryContext ctx;
@@ -69,43 +78,36 @@ makeVecAggState(FunctionCallInfo fcinfo)
 Args* 
 makeVecFromArgs(FunctionCallInfo fcinfo, int start, int dim) 
 {
+    int mvec_oid = 0;
+
     Args* vec = (Args*) palloc0(sizeof(Args) * dim);
+    if(!get_mvec_oid(mvec_oid)){
+        ereport(ERROR, (errmsg("get mvec oid error!")));
+    }
+
     for (int i = start; i < dim + start; i++) {
-        Oid ele_type = get_fn_expr_argtype(fcinfo->flinfo, i);
-        switch (ele_type) {
-            case INT4OID:
-            case INT2OID:
-            case INT8OID:
-            {
-                vec[i - start].integer = PG_GETARG_INT32(i); 
-                break;
-            }
-            case FLOAT4OID:
-            case FLOAT8OID:
-            {
-                vec[i - start].integer = PG_GETARG_FLOAT8(i); 
-                break;
-            }
-            case TEXTOID:
-            {
-                vec[i - start].ptr = TextDatumGetCString(PG_GETARG_DATUM(i));
-                break;
-            }
-            case CSTRINGOID:
-            {
-                vec[i - start].ptr = pstrdup(PG_GETARG_CSTRING(i));
-                break;
-            }
-            case NUMERICOID:
-            {
-                vec[i - start].floating = DatumGetFloat8(DirectFunctionCall1(numeric_float8, PG_GETARG_DATUM(i)));
-                break;
-            }
-            default:
-            {
-                ereport(ERROR, (errmsg("%d type don't support!", get_fn_expr_argtype(fcinfo->flinfo, i))));
-                break;
-            }
+        Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, i);
+        if(argtype == INT4OID || argtype == INT2OID || argtype == INT8OID){
+            int cur_int = PG_GETARG_INT32(i);
+            vec[i-start].integer = cur_int;
+        }else if(argtype == FLOAT4OID || argtype == FLOAT8OID){
+            float8 cur_float = PG_GETARG_FLOAT8(i);
+            vec[i-start].floating = cur_float;
+        }else if(argtype == TEXTOID){
+            char* cur_text = TextDatumGetCString(PG_GETARG_DATUM(i));
+            vec[i-start].ptr = cur_text;
+        }else if(argtype == CSTRINGOID){
+            char* cur_cstring = PG_GETARG_CSTRING(i);
+            vec[i-start].ptr = cur_cstring;
+        }else if(argtype == NUMERICOID){
+            Datum numer = PG_GETARG_DATUM(i);
+            float8 num_float = DatumGetFloat8(DirectFunctionCall1(numeric_float8, numer));;
+            vec[i-start].floating = num_float;
+        }else if(argtype == mvec_oid){
+            MVec* cur_mvec = DatumGetMVec(PG_GETARG_DATUM(i));
+            vec[i-start].ptr = cur_mvec;
+        }else{
+            ereport(ERROR, (errmsg("%d type don't support!", get_fn_expr_argtype(fcinfo->flinfo, i))));
         }
     }
     return vec;
@@ -147,7 +149,7 @@ if (wait_and_check_error(pool, res, prcsd_batch_n))            \
 }
 
 #define CLOCK_START() auto start = std::chrono::system_clock::now()
-#define CLOCK_END(type) state->type##_time += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - start).count()
+#define CLOCK_END(type) time_filter.type##_time += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - start).count()
 
 static std::vector<torch::jit::IValue>
 split_results_one_level(torch::jit::IValue res) {
@@ -212,10 +214,16 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
     }
 
     // 1. 加载模型
-    if(!model_manager.LoadModel(state->model, model_path)){
-        model_path.clear();
-        ereport(ERROR, (errmsg("load model error")));
-    }
+    {
+        CLOCK_START();
+
+        if(!model_manager.LoadModel(state->model, model_path)){
+            model_path.clear();
+            ereport(ERROR, (errmsg("load model error")));
+        }
+
+        CLOCK_END(load_model);
+    }   
 
     // 2. 设置gpu模式
     if(pg_strcasecmp(state->cuda, "gpu") == 0 && 
@@ -237,12 +245,12 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
         CLOCK_START();
 
         for (int i = 0; i < prcsd_batch_n; i++) {
-            pool.emplace_back([&, i](){
+            //pool.emplace_back([&, i](){
                 Args* in = (Args*)list_nth(state->ins, i);
                 res[i] = model_manager.PreProcess(model_path, input_tensors[i], in);
-            });
+            //});
         }
-        WAIT_AND_CHECK_ERROR("preprocess");
+        //WAIT_AND_CHECK_ERROR("preprocess");
 
         CLOCK_END(pre);
     }
@@ -285,7 +293,7 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
                 state->outs = lappend(state->outs, palloc0(sizeof(Args)));
 
             for (int i = 0; i < prcsd_batch_n; i++) {
-                pool.emplace_back([&, i](){
+                //pool.emplace_back([&, i](){
                     Args* in = (Args*)list_nth(state->ins, i);
                     torch::jit::IValue wrapped_out(outputs[i]);
                     if (ret_float8) {
@@ -296,9 +304,9 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
                         res[i] = model_manager.OutputProcessText(model_path, wrapped_out, in, result_str);   
                         ((Args*)list_nth(state->outs, i))->ptr = pstrdup(result_str.c_str());
                     }
-                });
+                //});
             }
-            WAIT_AND_CHECK_ERROR("postprocess");
+            //WAIT_AND_CHECK_ERROR("postprocess");
         }catch (const std::exception& e) {
             elog(INFO, "error message:%s", e.what());
         }

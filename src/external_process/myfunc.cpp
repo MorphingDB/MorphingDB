@@ -1,5 +1,6 @@
 #include "myfunc.h"
 #include "model_manager.h"
+#include "vector.h"
 
 extern "C"{
 #include "utils/palloc.h"
@@ -16,30 +17,49 @@ bool MyProcessImage(std::vector<torch::jit::IValue>& img_tensor, Args* args)
     cv::Mat image;
     cv::Mat image_float;
     char* url = (char*)args[0].ptr;
+    try{
+        image = cv::imread(url);
+        cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
+        image.convertTo(image_float, CV_32FC3, 1.0/255, 0);
+        cv::resize(image_float, image_float, cv::Size(224, 224));
 
-    image = cv::imread(url);
-    cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
-    image.convertTo(image_float, CV_32FC3, 1.0/255, 0);
-    cv::resize(image_float, image_float, cv::Size(64, 64));
+        auto tensor = torch::from_blob(image_float.data, {1, 224, 224, 3});
+        tensor = tensor.permute({0,3,1,2});
+        tensor[0][0] = tensor[0][0].sub_(0.485).div_(0.229);
+        tensor[0][1] = tensor[0][1].sub_(0.456).div_(0.224);
+        tensor[0][2] = tensor[0][2].sub_(0.406).div_(0.225);
 
-    auto tensor = torch::from_blob(image_float.data, {1, 64, 64, 3});
-    tensor = tensor.permute({0,3,1,2});
-    tensor[0][0] = tensor[0][0].sub_(0.485).div_(0.229);
-    tensor[0][1] = tensor[0][1].sub_(0.456).div_(0.224);
-    tensor[0][2] = tensor[0][2].sub_(0.406).div_(0.225);
-    
+        tensor = torch::rand({1, 3, 224, 224}, torch::kFloat32);
+
+        
+        img_tensor.emplace_back(tensor);
+    }catch(const std::exception& e){
+        return false;
+    }
+    return true;
+}
+
+bool MyProcessImage_vec(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    MVec* vector = (MVec*)args[0].ptr;
+    torch::Tensor tensor = vector_to_tensor(vector);
     img_tensor.push_back(tensor);
+
     return true;
 }
 
 bool MyOutPutProcessfloat(torch::jit::IValue& output_tensor, Args* args, float8& result)
 {
-    auto tensor = output_tensor.toTensor().slice(1, 0, 6);
+    try{
+        auto tensor = output_tensor.toTensor().slice(1, 0, 6);
     
-    std::tuple<torch::Tensor,torch::Tensor> res = tensor.sort(1, true);
-    torch::Tensor top_scores = std::get<0>(res);
+        std::tuple<torch::Tensor,torch::Tensor> res = tensor.sort(1, true);
+        torch::Tensor top_scores = std::get<0>(res);
 
-    result = top_scores[0][0].item<float8>();
+        result = top_scores[0][0].item<float8>();
+    } catch(const std::exception& e){
+        return false;
+    }
     return true;
 }
 
@@ -86,7 +106,7 @@ bool SST2PreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
     // std::filesystem::path absolute_path = current_path / relative_path;
 
     //process.LoadOrDie("/home/lhh/postgres-DB4AI/src/udf/src/external_process/../model/spiece.model");
-    if(!process.Load("/home/pgdl/model/spiece.model").ok()){
+    if(!process.Load("/home/lhh/pgdl_basemodel_new/model/spiece.model").ok()){
         return false;
     }
 
@@ -137,6 +157,26 @@ bool SST2PreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
     return true;
 }
 
+bool SST2_VecPreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    MVec* vector = (MVec*)args[0].ptr;
+    torch::Tensor tensor = vector_to_tensor(vector);
+
+    std::vector<torch::Tensor> unbound_tensors = tensor.unbind(1);
+
+    torch::Tensor token_ids = unbound_tensors[0].to(torch::kInt64);
+    torch::Tensor attention_mask = unbound_tensors[1].to(torch::kInt64);
+    torch::Tensor token_type_ids = unbound_tensors[2].to(torch::kInt64);
+    torch::Tensor position_ids = unbound_tensors[3].to(torch::kInt64);
+
+    img_tensor.push_back(token_ids);
+    img_tensor.push_back(attention_mask);
+    img_tensor.push_back(token_type_ids);
+    img_tensor.push_back(position_ids);
+
+    return true;
+}
+
 bool SST2OutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
 {
     auto tensor = outputs.toTuple()->elements()[0].toTensor();
@@ -160,14 +200,83 @@ bool SST2OutputProcessText(torch::jit::IValue& outputs, Args* args, std::string&
     return true;
 }
 
+bool IrisPreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    double sepal_length = args[0].floating;
+    double sepal_width = args[1].floating;
+    double petal_length = args[2].floating;
+    double petal_width = args[3].floating;
+
+    auto combined_tensor = torch::tensor({sepal_length, sepal_width, petal_length, petal_width}, torch::kFloat32).reshape({1, 4});
+    img_tensor.push_back(combined_tensor);
+    return true;
+}
+
+bool IrisOutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
+{
+    int result_float;
+    auto tensor = outputs.toTensor();
+    result_float = tensor.argmax(1).item<float8>();
+
+    if(result_float == 0){
+        result = result_float;
+    }else if(result_float == 1){
+        result = result_float;
+    }else if(result_float == 2){
+        result = result_float;
+    }else{
+        return false;
+    }
+    return true;
+}
+
+bool IrisOutputProcessText(torch::jit::IValue& outputs, Args* args, std::string& result)
+{
+
+    int result_float;
+    auto tensor = outputs.toTensor();
+    result_float = tensor.argmax(1).item<float8>();
+
+    if(result_float == 0){
+        result = "Iris-setosa";
+    }else if(result_float == 1){
+        result = "Iris-versicolor";
+    }else if(result_float == 2){
+        result = "Iris-virginica";
+    }else{
+        return false;
+    }
+    return true;
+}
+
 void register_callback()
 {
     elog(INFO, "register callback");
     model_manager.RegisterPreProcess("defect", MyProcessImage);
     model_manager.RegisterOutoutProcessFloat("defect", MyOutPutProcessfloat);
     model_manager.RegisterOutoutProcessText("defect", MyOutPutProcesstext);
+
+    // model_manager.RegisterPreProcess("defect_vec", MyProcessImage_vec);
+    // model_manager.RegisterOutoutProcessFloat("defect_vec", MyOutPutProcessfloat);
+    // model_manager.RegisterOutoutProcessText("defect_vec", MyOutPutProcesstext);
+
+    // model_manager.RegisterPreProcess("defect_1", MyProcessImage);
+    // model_manager.RegisterOutoutProcessFloat("defect_1", MyOutPutProcessfloat);
+    // model_manager.RegisterOutoutProcessText("defect_1", MyOutPutProcesstext);
+
+    // model_manager.RegisterPreProcess("defect_2", MyProcessImage);
+    // model_manager.RegisterOutoutProcessFloat("defect_2", MyOutPutProcessfloat);
+    // model_manager.RegisterOutoutProcessText("defect_2", MyOutPutProcesstext);
     
     model_manager.RegisterPreProcess("sst2", SST2PreProcess);
     model_manager.RegisterOutoutProcessFloat("sst2", SST2OutputProcessFloat);
     model_manager.RegisterOutoutProcessText("sst2", SST2OutputProcessText);
+
+    // model_manager.RegisterPreProcess("sst2_vec", SST2_VecPreProcess);
+    // model_manager.RegisterOutoutProcessFloat("sst2_vec", SST2OutputProcessFloat);
+    // model_manager.RegisterOutoutProcessText("sst2_vec", SST2OutputProcessText);
+
+    // model_manager.RegisterPreProcess("iris", IrisPreProcess);
+    // model_manager.RegisterOutoutProcessFloat("iris", IrisOutputProcessFloat);
+    // model_manager.RegisterOutoutProcessText("iris", IrisOutputProcessText);
 }
