@@ -51,10 +51,10 @@ bool MyProcessImage_vec(std::vector<torch::jit::IValue>& img_tensor, Args* args)
 bool MyOutPutProcessfloat(torch::jit::IValue& output_tensor, Args* args, float8& result)
 {
     try{
-        auto tensor = output_tensor.toTensor().slice(1, 0, 6);
+        auto tensor = output_tensor.toTensor().slice(1, 0, 120);
     
         std::tuple<torch::Tensor,torch::Tensor> res = tensor.sort(1, true);
-        torch::Tensor top_scores = std::get<0>(res);
+        torch::Tensor top_scores = std::get<1>(res);
 
         result = top_scores[0][0].item<float8>();
     } catch(const std::exception& e){
@@ -249,6 +249,249 @@ bool IrisOutputProcessText(torch::jit::IValue& outputs, Args* args, std::string&
     return true;
 }
 
+bool SlicePreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    MVec* vector = (MVec*)args[0].ptr;
+    torch::Tensor tensor = vector_to_tensor(vector);
+    img_tensor.push_back(tensor);
+
+    return true;
+}
+
+bool SliceOutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
+{
+    int result_float;
+    auto tensor = outputs.toTensor();
+    result = tensor.item<float>();
+    return true;
+}
+
+
+bool BankMarketPreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    double age = args[0].integer;
+    double job = args[1].integer;
+    double marital = args[2].integer;
+    double education = args[3].integer;
+    double default_ = args[4].integer;
+    double housing = args[5].integer;
+    double loan = args[6].integer;
+    double contact = args[7].integer;
+    double month = args[8].integer;
+    double day_of_week = args[9].integer;
+    double duration = args[10].integer;
+    double campaign = args[11].integer;
+    double pdays = args[12].integer;
+    double previous = args[13].integer;
+    double poutcome = args[14].integer;
+    double emp_var_rate = args[15].floating;
+    double cons_price_idx = args[16].floating;
+    double cons_conf_idx = args[17].floating;
+    double euribor3m = args[18].floating;
+    double nr_employed = args[19].floating;
+
+    auto combined_tensor = torch::tensor({age, job, marital, education, default_, housing, loan, contact, month, day_of_week, duration, campaign, pdays, previous, poutcome, emp_var_rate, cons_price_idx, cons_conf_idx, euribor3m, nr_employed}, torch::kFloat32).reshape({1, 20});
+    img_tensor.push_back(combined_tensor);
+    return true;
+}
+
+bool BankMarketOutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
+{
+    int result_float;
+    auto tensor = outputs.toTensor();
+    result_float = tensor.argmax(1).item<float8>();
+
+    if(result_float == 0){
+        result = result_float;
+    }else if(result_float == 1){
+        result = result_float;
+    }else{
+        return false;
+    }
+    return true;
+}
+
+bool BankMarketOutputProcessText(torch::jit::IValue& outputs, Args* args, std::string& result)
+{
+
+    int result_float;
+    auto tensor = outputs.toTensor();
+    result_float = tensor.argmax(1).item<float8>();
+
+    if(result_float == 0){
+        result = "no";
+    }else if(result_float == 1){
+        result = "yes";
+    }else{
+        return false;
+    }
+    return true;
+}
+
+bool CreditPreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    float Index = args[0].floating;
+    float id = args[1].floating;
+    float customer_id = args[2].floating;
+    float month = args[3].floating;
+    float age = args[4].floating;
+    float ssn = args[5].floating;
+    float annual_income = args[6].floating;
+    float monthly_inhand_salary = args[7].floating;
+    float num_bank_accounts = args[8].floating;
+    float num_credit_card = args[9].floating;
+    float interest_rate = args[10].floating;
+    float num_of_loan = args[11].floating;
+    float delay_from_due_date = args[12].floating;
+    float num_of_delayed_payment = args[13].floating;
+    float changed_credit_limit = args[14].floating;
+    float num_credit_inquiries = args[15].floating;
+    float outstanding_debt = args[16].floating;
+    float credit_utilization_ratio = args[17].floating;
+    float credit_history_age = args[18].floating;
+    float total_emi_per_month = args[19].floating;
+    float amount_invested_monthly = args[0].floating;
+    float monthly_balance = args[1].floating;
+    float name = args[2].floating;
+    float occupation = args[3].floating;
+    float credit_mix = args[4].floating;
+    float payment_of_min_amount = args[5].floating;
+    float payment_behaviour = args[6].floating;
+    float auto_loan = args[7].floating;
+    float credit_builder_loan = args[8].floating;
+    float debt_consolidation_loan = args[9].floating;
+    float home_equity_loan  = args[10].floating;
+    float mortgage_loan = args[11].floating;
+    float not_specified  = args[12].floating;
+    float payday_loan = args[13].floating;
+    float personal_loan  = args[14].floating;
+    float student_loan = args[15].floating;
+
+    auto combined_tensor = torch::tensor({Index,id,customer_id,month,age,ssn,annual_income,monthly_inhand_salary,num_bank_accounts,num_credit_card,interest_rate,num_of_loan,delay_from_due_date,num_of_delayed_payment,changed_credit_limit,num_credit_inquiries,outstanding_debt,credit_utilization_ratio,credit_history_age,total_emi_per_month,amount_invested_monthly,monthly_balance,name,occupation,credit_mix,payment_of_min_amount,payment_behaviour,auto_loan,credit_builder_loan,debt_consolidation_loan,home_equity_loan,mortgage_loan,not_specified,payday_loan,personal_loan,student_loan}, torch::kFloat32).reshape({1, 36});
+    img_tensor.push_back(combined_tensor);
+    return true;
+}
+
+bool CreditOutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
+{
+    int result_float;
+    auto tensor = outputs.toTensor();
+    result_float = tensor.argmax(1).item<float8>();
+
+    if(result_float == 0){
+        result = result_float;
+    }else if(result_float == 1){
+        result = result_float;
+    }else if(result_float == 2){
+        result = result_float;
+    }else{
+        return false;
+    }
+    return true;
+}
+
+bool CreditOutputProcessText(torch::jit::IValue& outputs, Args* args, std::string& result)
+{
+
+    int result_float;
+    auto tensor = outputs.toTensor();
+    result_float = tensor.argmax(1).item<float8>();
+
+    if(result_float == 0){
+        result = "Good";
+    }else if(result_float == 1){
+        result = "Standard";
+    }else if(result_float == 2){
+        result = "poor";
+    }else{
+        return false;
+    }
+    return true;
+}
+
+
+bool SquardPreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    MVec* vector = (MVec*)args[0].ptr;
+    torch::Tensor tensor = vector_to_tensor(vector);
+
+    for (size_t i = 0; i < 4; ++i) {
+        torch::Tensor sub_tensor = tensor.unbind(1)[i];
+        // 如果需要转换数据类型，使用std::move减少复制
+        img_tensor.push_back(sub_tensor);
+    }
+    return true;
+}
+
+bool SquardOutputProcessText(torch::jit::IValue& outputs, Args* args, std::string& result)
+{
+    // 还需要decode 需要将token_ids的内容拿出来
+    try{
+        MVec* vector = (MVec*)args[0].ptr;
+        torch::Tensor stacked_inputs = vector_to_tensor(vector);
+        torch::Tensor token_ids = stacked_inputs[0][0];
+
+        // int* datas = token_ids.data_ptr<int>();
+
+        std::vector<int> tis;
+        for(int i=0; i<512; ++i){
+            tis.push_back(token_ids[i].item().toInt());
+        }
+
+        auto tensor = outputs.toTuple()->elements();
+
+        auto start_index = torch::argmax(tensor[0].toTensor()).item<int>();
+
+        auto end_index = torch::argmax(tensor[1].toTensor()).item<int>();
+
+        sentencepiece::SentencePieceProcessor process;
+        process.LoadOrDie("/data/nlp/squad2/albert-base-v2-squad2/spiece.model");
+        std::vector<int> answer;
+        answer.insert(answer.end(), tis.begin() + start_index, tis.begin() + end_index + 1);
+        process.Decode(answer, &result);
+    }catch(const std::exception& e){
+        return false;
+    }
+    return true;
+
+}
+
+bool SquardOutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
+{
+    auto tensor = outputs.toTuple()->elements();
+
+    auto start_index = torch::argmax(tensor[0].toTensor()).item<int>();
+
+    auto end_index = torch::argmax(tensor[1].toTensor()).item<int>();
+
+    result = start_index;
+    return true;
+}
+
+bool FinancePreProcess(std::vector<torch::jit::IValue>& img_tensor, Args* args)
+{
+    MVec* vector = (MVec*)args[0].ptr;
+    torch::Tensor tensor = vector_to_tensor(vector);
+
+    for (size_t i = 0; i < 2; ++i) {
+        torch::Tensor sub_tensor = tensor.unbind(1)[i].to(torch::kInt64);
+        // 如果需要转换数据类型，使用std::move减少复制
+        img_tensor.push_back(sub_tensor);
+    }
+    return true;
+}
+
+bool FinanceOutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& result)
+{
+    auto dict = outputs.toGenericDict();
+    auto logits = dict.at("logits").toTensor();
+
+    auto index = torch::argmax(logits, 1).item<int>();
+
+    result = index;
+    return true;
+}
+
 void register_callback()
 {
     elog(INFO, "register callback");
@@ -256,9 +499,9 @@ void register_callback()
     model_manager.RegisterOutoutProcessFloat("defect", MyOutPutProcessfloat);
     model_manager.RegisterOutoutProcessText("defect", MyOutPutProcesstext);
 
-    // model_manager.RegisterPreProcess("defect_vec", MyProcessImage_vec);
-    // model_manager.RegisterOutoutProcessFloat("defect_vec", MyOutPutProcessfloat);
-    // model_manager.RegisterOutoutProcessText("defect_vec", MyOutPutProcesstext);
+    model_manager.RegisterPreProcess("defect_vec", MyProcessImage_vec);
+    model_manager.RegisterOutoutProcessFloat("defect_vec", MyOutPutProcessfloat);
+    model_manager.RegisterOutoutProcessText("defect_vec", MyOutPutProcesstext);
 
     // model_manager.RegisterPreProcess("defect_1", MyProcessImage);
     // model_manager.RegisterOutoutProcessFloat("defect_1", MyOutPutProcessfloat);
@@ -272,11 +515,42 @@ void register_callback()
     model_manager.RegisterOutoutProcessFloat("sst2", SST2OutputProcessFloat);
     model_manager.RegisterOutoutProcessText("sst2", SST2OutputProcessText);
 
-    // model_manager.RegisterPreProcess("sst2_vec", SST2_VecPreProcess);
-    // model_manager.RegisterOutoutProcessFloat("sst2_vec", SST2OutputProcessFloat);
-    // model_manager.RegisterOutoutProcessText("sst2_vec", SST2OutputProcessText);
+    model_manager.RegisterPreProcess("sst2_vec", SST2_VecPreProcess);
+    model_manager.RegisterOutoutProcessFloat("sst2_vec", SST2OutputProcessFloat);
+    model_manager.RegisterOutoutProcessText("sst2_vec", SST2OutputProcessText);
 
-    // model_manager.RegisterPreProcess("iris", IrisPreProcess);
-    // model_manager.RegisterOutoutProcessFloat("iris", IrisOutputProcessFloat);
-    // model_manager.RegisterOutoutProcessText("iris", IrisOutputProcessText);
+    model_manager.RegisterPreProcess("iris", IrisPreProcess);
+    model_manager.RegisterOutoutProcessFloat("iris", IrisOutputProcessFloat);
+    model_manager.RegisterOutoutProcessText("iris", IrisOutputProcessText);
+
+    model_manager.RegisterPreProcess("slice", SlicePreProcess);
+    model_manager.RegisterOutoutProcessFloat("slice", SliceOutputProcessFloat);
+
+    model_manager.RegisterPreProcess("year_predict", SlicePreProcess);
+    model_manager.RegisterOutoutProcessFloat("year_predict", SliceOutputProcessFloat);
+
+    model_manager.RegisterPreProcess("swarm", SlicePreProcess);
+    model_manager.RegisterOutoutProcessFloat("swarm", SliceOutputProcessFloat);
+
+    model_manager.RegisterPreProcess("银行信贷", BankMarketPreProcess);
+    model_manager.RegisterOutoutProcessFloat("银行信贷", BankMarketOutputProcessFloat);
+    model_manager.RegisterOutoutProcessText("银行信贷", BankMarketOutputProcessText);
+
+    model_manager.RegisterPreProcess("信用卡客户信用评级分类", CreditPreProcess);
+    model_manager.RegisterOutoutProcessFloat("信用卡客户信用评级分类", CreditOutputProcessFloat);
+    model_manager.RegisterOutoutProcessText("信用卡客户信用评级分类", CreditOutputProcessText);
+
+    model_manager.RegisterPreProcess("googlenet_cifar10", MyProcessImage_vec);
+    model_manager.RegisterOutoutProcessFloat("googlenet_cifar10", MyOutPutProcessfloat);
+
+    model_manager.RegisterPreProcess("alexnet_stanford_dogs", MyProcessImage_vec);
+    model_manager.RegisterOutoutProcessFloat("alexnet_stanford_dogs", MyOutPutProcessfloat);
+    // model_manager.RegisterOutoutProcessText("googlenet_cifar10", CreditOutputProcessText);
+
+    model_manager.RegisterPreProcess("squard", SquardPreProcess);
+    model_manager.RegisterOutoutProcessFloat("squard", SquardOutputProcessFloat);
+    model_manager.RegisterOutoutProcessText("squard", SquardOutputProcessText);
+
+    model_manager.RegisterPreProcess("finance", FinancePreProcess);
+    model_manager.RegisterOutoutProcessFloat("finance", FinanceOutputProcessFloat);
 }

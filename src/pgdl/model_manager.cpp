@@ -402,7 +402,7 @@ void ModelManager::RegisterPreProcess(const std::string& model_name,
         module_preprocess_functions_[model_path] = func;
         return;
     }else{
-        ereport(ERROR, (errmsg("model:%s not exist!", model_name.c_str())));
+        //ereport(ERROR, (errmsg("model:%s not exist!", model_name.c_str())));
     }
 }
 
@@ -414,7 +414,7 @@ void ModelManager::RegisterOutoutProcessFloat(const std::string& model_name,
         module_outputprocess_functions_float_[model_path] = func;
         return;
     }else{
-        ereport(ERROR, (errmsg("model:%s not exist!", model_name.c_str())));
+        //ereport(ERROR, (errmsg("model:%s not exist!", model_name.c_str())));
     }
 }
 
@@ -426,7 +426,7 @@ void ModelManager::RegisterOutoutProcessText(const std::string& model_name,
         module_outputprocess_functions_text_[model_path] = func;
         return;
     }else{
-        ereport(ERROR, (errmsg("model:%s not exist!", model_name.c_str())));
+        //ereport(ERROR, (errmsg("model:%s not exist!", model_name.c_str())));
     }
 }
 

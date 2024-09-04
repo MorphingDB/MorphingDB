@@ -193,7 +193,20 @@ split_results(torch::jit::IValue output) {
             ret.emplace_back(torch::jit::IValue(c10::ivalue::Tuple::create(std::move(row))));
         }
         return ret;
-    } 
+    } else if (output.isGenericDict()){
+        auto generic_dict = output.toGenericDict();
+
+        for (const auto& item : generic_dict) {
+            if (item.value().isTensor()) {
+                auto tensor = item.value().toTensor();
+                for(int i = 0; i < tensor.size(0); ++i){
+                    c10::impl::GenericDict dict = c10::impl::GenericDict(generic_dict.keyType(), generic_dict.valueType());
+                    dict.insert(item.key(), tensor[i].unsqueeze(0));
+                    ret.emplace_back(dict);
+                }
+            }
+        }
+    }
     return ret;
 }
 
@@ -243,37 +256,45 @@ infer_batch_internal(VecAggState *state, bool ret_float8)
     // 3. 输入预处理
     {
         CLOCK_START();
-
-        for (int i = 0; i < prcsd_batch_n; i++) {
-            //pool.emplace_back([&, i](){
-                Args* in = (Args*)list_nth(state->ins, i);
-                res[i] = model_manager.PreProcess(model_path, input_tensors[i], in);
-            //});
+        try{
+            for (int i = 0; i < prcsd_batch_n; i++) {
+                //pool.emplace_back([&, i](){
+                    Args* in = (Args*)list_nth(state->ins, i);
+                    res[i] = model_manager.PreProcess(model_path, input_tensors[i], in);
+                //});
+            }
+            //WAIT_AND_CHECK_ERROR("preprocess");
+        }catch (const std::exception& e) {
+            elog(INFO, "error message:%s", e.what());
         }
-        //WAIT_AND_CHECK_ERROR("preprocess");
-
         CLOCK_END(pre);
     }
 
     // 4. 预测
     {
         CLOCK_START();
+        try{
+            // concat each inputs
+            batch_inputs_tmp.resize(input_tensors[0].size());
+            input_batch_tensor.reserve(input_tensors.size());
 
-        // concat each inputs
-        batch_inputs_tmp.resize(input_tensors[0].size());
-        for (auto& vecs: input_tensors) {
-            for (int i = 0; i < vecs.size(); i++) {
-                batch_inputs_tmp[i].emplace_back(vecs[i].toTensor());
+            for (size_t i = 0; i < input_tensors[0].size(); ++i) {
+                std::vector<torch::Tensor> one_dim_vecs;
+                one_dim_vecs.reserve(input_tensors.size());
+                for (auto& vecs : input_tensors) {
+                    one_dim_vecs.push_back(vecs[i].toTensor());
+                }
+                // 使用 torch::cat 替代 torch::concat
+                input_batch_tensor.push_back(torch::cat(one_dim_vecs, 0));
             }
-        }
-        for (auto& one_dim_vecs: batch_inputs_tmp) {
-            input_batch_tensor.emplace_back(torch::concat(one_dim_vecs, 0));
-        }
-            
-        // infer model
-        if(!model_manager.Predict(model_path, input_batch_tensor, output)) {
-            CLEAN_UP_CPP_OBJS();
-            ereport(ERROR, (errmsg("%s:predict error!", model_path)));
+                
+            // infer model
+            if(!model_manager.Predict(model_path, input_batch_tensor, output)) {
+                CLEAN_UP_CPP_OBJS();
+                ereport(ERROR, (errmsg("%s:predict error!", model_path)));
+            }
+        }catch (const std::exception& e) {
+            elog(INFO, "error message:%s", e.what());
         }
         CLOCK_END(infer);
     }
