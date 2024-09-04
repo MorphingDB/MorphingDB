@@ -9,8 +9,12 @@
 MVec* 
 image_to_vector(const int32_t width, 
                       const int32_t height, 
-                      const float8 norm_mean,
-                      const float8 norm_std,
+                      const float8 norm_mean_1,
+                      const float8 norm_mean_2,
+                      const float8 norm_mean_3,
+                      const float8 norm_std_1,
+                      const float8 norm_std_2,
+                      const float8 norm_std_3,
                       const char* image_url)
 {
     cv::Mat image;
@@ -24,9 +28,9 @@ image_to_vector(const int32_t width,
 
     auto tensor = torch::from_blob(image_float.data, {1, width, height, 3});
     tensor = tensor.permute({0,3,1,2});
-    tensor[0][0] = tensor[0][0].sub_(0.485).div_(0.229);
-    tensor[0][1] = tensor[0][1].sub_(0.456).div_(0.224);
-    tensor[0][2] = tensor[0][2].sub_(0.406).div_(0.225);
+    tensor[0][0] = tensor[0][0].sub_(norm_mean_1).div_(norm_std_1);
+    tensor[0][1] = tensor[0][1].sub_(norm_mean_2).div_(norm_std_2);
+    tensor[0][2] = tensor[0][2].sub_(norm_mean_3).div_(norm_std_3);
 
     try{
         vec = tensor_to_vector(tensor);
@@ -43,7 +47,8 @@ image_to_vector(const int32_t width,
 
 
 MVec* 
-text_to_vector(const char* text)
+text_to_vector(const char* piece_model_path, 
+               const char* text)
 {
     MVec* ret;
     auto max_length = 128;
@@ -57,7 +62,7 @@ text_to_vector(const char* text)
     // std::filesystem::path absolute_path = current_path / relative_path;
 
     //process.LoadOrDie("/home/lhh/postgres-DB4AI/src/udf/src/external_process/../model/spiece.model");
-    if(!process.Load("/home/lhh/pgdl_basemodel_new/model/spiece.model").ok()){
+    if(!process.Load(piece_model_path).ok()){
         ereport(ERROR,
 					(errmsg("spiece model not exist!")));
     }

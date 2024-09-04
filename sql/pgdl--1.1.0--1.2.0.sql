@@ -35,8 +35,12 @@ LANGUAGE C STRICT;
 CREATE OR REPLACE FUNCTION image_to_vector(  
     width integer,  
     height integer,  
-    norm_mean double precision,  
-    norm_std double precision,  
+    norm_mean_1 double precision,  
+    norm_mean_2 double precision, 
+    norm_mean_3 double precision, 
+    norm_std_1 double precision,  
+    norm_std_2 double precision, 
+    norm_std_3 double precision, 
     image_url text  
 )  
 RETURNS mvec
@@ -44,15 +48,16 @@ AS 'MODULE_PATHNAME', 'image_pre_process'
 LANGUAGE C STRICT;
 
 CREATE OR REPLACE FUNCTION text_to_vector(  
+    model_path text,
     text_a text  
 )  
 RETURNS mvec
-AS '/home/lhh/pg_complie/lib/postgresql/pgdl.so', 'text_pre_process'  
+AS 'MODULE_PATHNAME', 'text_pre_process'  
 LANGUAGE C STRICT;
 
 
 CREATE OR REPLACE FUNCTION print_cost()
 RETURNS text
-AS '/home/lhh/pg_complie/lib/postgresql/pgdl.so', 'print_cost'
+AS 'MODULE_PATHNAME', 'print_cost'
 LANGUAGE C STRICT;
 
