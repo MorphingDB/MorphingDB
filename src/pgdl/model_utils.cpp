@@ -74,7 +74,8 @@ get_model_layer_name(const char* model_name, int32_t layer_index, std::string& l
     return true;
 }
 
-bool compare_model_struct(const torch::jit::script::Module& model, const torch::jit::script::Module& base_model)
+bool 
+compare_model_struct(const torch::jit::script::Module& model, const torch::jit::script::Module& base_model)
 {
     std::vector<std::pair<std::string, torch::Tensor>> base_model_parameters_vec;
     auto model_modules = model.named_modules();
@@ -112,7 +113,8 @@ bool compare_model_struct(const torch::jit::script::Module& model, const torch::
     return true;
 }
 
-int compare_model_struct(const char* model_path, const char* base_model_path)
+int 
+compare_model_struct(const char* model_path, const char* base_model_path)
 {
     torch::jit::script::Module model, base_model;
     try {
@@ -160,7 +162,7 @@ int compare_model_struct(const char* model_path, const char* base_model_path)
             continue;
         }
         
-        if(iter->first != layer_name || model_tensor.sizes() != iter->second.sizes()){
+        if(iter->first == layer_name && model_tensor.sizes() != iter->second.sizes()){
             return 3;
         }
         iter++;
@@ -171,8 +173,12 @@ int compare_model_struct(const char* model_path, const char* base_model_path)
         std::string layer_name = pair.name;
         torch::Tensor model_tensor = pair.value;
         
-        if(iter->first != layer_name || model_tensor.sizes() != iter->second.sizes()){
-            return 3;
+        if (layer_name.find("fc") != std::string::npos) {
+            continue;
+        }
+        
+        if(iter->first == layer_name && model_tensor.sizes() != iter->second.sizes()){
+            return 4;
         }
         iter++;
     }
