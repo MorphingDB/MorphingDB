@@ -61,3 +61,12 @@ RETURNS text
 AS 'MODULE_PATHNAME', 'print_cost'
 LANGUAGE C STRICT;
 
+CREATE OR REPLACE FUNCTION select_model(  
+    table_name text,
+    col_name text,
+    dataset_name text,
+    sample_size integer
+)  
+RETURNS text
+AS 'MODULE_PATHNAME', 'select_model'  
+LANGUAGE C STRICT;
