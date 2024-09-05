@@ -57,6 +57,11 @@ make -j4
 sudo make install
 ```
 
+### Install onnxruntime
+```shell
+
+```
+
 ### Make and install
 
 ```shell
