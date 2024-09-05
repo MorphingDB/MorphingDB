@@ -1,4 +1,5 @@
 #include "model_manager.h"
+#include "model_selection.h"
 
 #include "unistd.h"
 #include "myfunc.h"
@@ -70,6 +71,9 @@ PG_FUNCTION_INFO_V1(text_pre_process);
 
 // print cost time
 PG_FUNCTION_INFO_V1(print_cost);
+
+// select model
+PG_FUNCTION_INFO_V1(select_model);
 
 
 typedef struct TimeFilter {
@@ -914,24 +918,35 @@ image_pre_process(PG_FUNCTION_ARGS)
 {
     int32_t width = 0;
     int32_t height = 0;
-    float8  norm_mean = 0;
-    float8  norm_std = 0;
+    float8  norm_mean_1 = 0;
+    float8  norm_mean_2 = 0;
+    float8  norm_mean_3 = 0;
+    float8  norm_std_1 = 0;
+    float8  norm_std_2 = 0;
+    float8  norm_std_3 = 0;
     MVec*   ret = NULL;
     char*   image_url = NULL;
 
 
     width = PG_GETARG_INT32(0);
     height = PG_GETARG_INT32(1);
-    norm_mean = PG_GETARG_FLOAT8(2);
-    norm_std = PG_GETARG_FLOAT8(3);
-    image_url = TextDatumGetCString(PG_GETARG_DATUM(4));
+    norm_mean_1 = PG_GETARG_FLOAT8(2);
+    norm_mean_2 = PG_GETARG_FLOAT8(3);
+    norm_mean_3 = PG_GETARG_FLOAT8(4);
+    norm_std_1 = PG_GETARG_FLOAT8(5);
+    norm_std_2 = PG_GETARG_FLOAT8(6);
+    norm_std_3 = PG_GETARG_FLOAT8(7);
+    image_url = TextDatumGetCString(PG_GETARG_DATUM(8));
 
     if(width <= 0 || height <= 0){
         ereport(ERROR,
 					(errmsg("width and height must be greater than 0")));
     }
 
-    ret = image_to_vector(width, height, norm_mean, norm_std, image_url);
+    ret = image_to_vector(width, height, 
+                          norm_mean_1, norm_mean_2, norm_mean_3,
+                          norm_std_1, norm_std_2, norm_std_3,
+                          image_url);
 
     PG_RETURN_POINTER(ret);
 
@@ -941,11 +956,13 @@ Datum
 text_pre_process(PG_FUNCTION_ARGS)
 {
     char*   text_a = NULL;
+    char*   model_path = NULL;
     MVec*   ret = NULL;
 
-    text_a = TextDatumGetCString(PG_GETARG_DATUM(0));
+    model_path = TextDatumGetCString(PG_GETARG_DATUM(0));
+    text_a = TextDatumGetCString(PG_GETARG_DATUM(1));
 
-    ret = text_to_vector(text_a);
+    ret = text_to_vector(model_path, text_a);
     
     PG_RETURN_POINTER(ret);
 }
@@ -975,6 +992,35 @@ print_cost(PG_FUNCTION_ARGS)
 
     // 返回TEXT Datum
     PG_RETURN_DATUM(result);
+}
+
+Datum 
+select_model(PG_FUNCTION_ARGS)
+{
+    char* table_name = NULL;
+    char* col_name = NULL;
+    char* dataset_name = NULL;
+    int   sample_size = 0;
+    text* result = nullptr;
+
+    table_name = TextDatumGetCString(PG_GETARG_DATUM(0));
+    col_name = TextDatumGetCString(PG_GETARG_DATUM(1));
+    dataset_name = TextDatumGetCString(PG_GETARG_DATUM(2));
+    sample_size = PG_GETARG_INT32(3);
+
+    ModelSelection select_model("/home/lhh/pgdl_basemodel_new/model/select_model/ViT-L-14_visual_traced.pt", 
+                                "/home/lhh/pgdl_basemodel_new/model/select_model/regression_model.onnx");
+
+    std::string result_str = select_model.SelectModel(table_name, 
+                                                      col_name,           
+                                                      sample_size,
+                                                      "cifar10");
+    ereport(INFO, (errmsg("flag1")));
+    result = (text*)palloc(result_str.size() + VARHDRSZ);
+    SET_VARSIZE(result, result_str.size() + VARHDRSZ);
+    memcpy(VARDATA(result), result_str.c_str(), result_str.size());
+
+    PG_RETURN_TEXT_P(PointerGetDatum(result));
 }
 
 #ifdef __cplusplus

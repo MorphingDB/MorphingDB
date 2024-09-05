@@ -13,7 +13,8 @@ set(SET_VERBOSE_MAKEFILE ON)
 find_package(PostgreSQL REQUIRED)
 find_package(Torch REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(SentencePiece)
+find_package(SentencePiece REQUIRED)
+find_package(onnxruntime REQUIRED)
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 set(CMAKE_INSTALL_RPATH ${TORCH_LIBRARIES})
@@ -54,6 +55,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/external_process)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/pgdl)
 
+# onnxruntime include
+include_directories(${onnxruntime_INCLUDE_DIRS})
+
+
 
 # torch libs
 target_link_libraries(pgdl ${TORCH_LIBRARIES})
@@ -63,6 +68,9 @@ target_link_libraries(pgdl ${OpenCV_LIBS})
 
 # postgres libs
 target_link_libraries(pgdl ${PostgreSQL_LIBRARIES})
+
+# onnxruntime libs
+target_link_libraries(pgdl ${onnxruntime_LIBRARIES})
 
 
 #set(SentencePiece_INCLUDE_DIR /home/lhh/sentence/include/) 
