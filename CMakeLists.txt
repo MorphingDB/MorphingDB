@@ -79,7 +79,7 @@ target_link_libraries(pgdl ${onnxruntime_LIBRARIES})
 #set_target_properties(pgdl PROPERTIES INSTALL_RPATH ${TORCH_LIBRARIES})
 
 include_directories(${SentencePiece_INCLUDE_DIR})
-target_link_libraries(pgdl sentencepiece)
+target_link_libraries(pgdl ${SentencePiece_LIBRARY})
 
 # install extension share lib
 install(FILES build/pgdl.so

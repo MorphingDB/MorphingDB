@@ -67,6 +67,6 @@ CREATE OR REPLACE FUNCTION select_model(
     dataset_name text,
     sample_size integer
 )  
-RETURNS text
+RETURNS cstring
 AS 'MODULE_PATHNAME', 'select_model'  
 LANGUAGE C STRICT;

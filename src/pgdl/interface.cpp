@@ -264,7 +264,7 @@ predict_float(PG_FUNCTION_ARGS)
     }
 
     // 2. choose cpu or gpu to predict
-    if (pg_strcasecmp(cuda, "gpu") && 
+    if (pg_strcasecmp(cuda, "gpu") == 0 && 
         model_manager.SetCuda(model_path)){
         
     }
@@ -386,7 +386,7 @@ predict_text(PG_FUNCTION_ARGS)
     }
 
     // 2. choose cpu or gpu to predict
-    if (pg_strcasecmp(cuda, "gpu") && 
+    if (pg_strcasecmp(cuda, "gpu") == 0 && 
         model_manager.SetCuda(model_path)){
         
     }
@@ -1015,12 +1015,7 @@ select_model(PG_FUNCTION_ARGS)
                                                       col_name,           
                                                       sample_size,
                                                       "cifar10");
-    ereport(INFO, (errmsg("flag1")));
-    result = (text*)palloc(result_str.size() + VARHDRSZ);
-    SET_VARSIZE(result, result_str.size() + VARHDRSZ);
-    memcpy(VARDATA(result), result_str.c_str(), result_str.size());
-
-    PG_RETURN_TEXT_P(PointerGetDatum(result));
+    PG_RETURN_CSTRING(result_str.c_str());
 }
 
 #ifdef __cplusplus
