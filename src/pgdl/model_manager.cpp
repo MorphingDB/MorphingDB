@@ -580,10 +580,14 @@ bool ModelManager::Predict(const std::string& model_path,
                  torch::jit::IValue& output)
 {
     if(module_handle_.find(model_path) == module_handle_.end()){
-        ereport(INFO, (errmsg("flag1:%s.", "lai")));
         return false;
     }
     try {
+        if(module_handle_[model_path].second == at::kCUDA){
+            for(auto& tensor : input){
+                tensor = tensor.toTensor().to(at::kCUDA);
+            }
+        }
         output = module_handle_[model_path].first.forward(input);
         return true;
     }
