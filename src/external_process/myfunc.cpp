@@ -16,23 +16,21 @@ bool MyProcessImage(std::vector<torch::jit::IValue>& img_tensor, Args* args)
 {
     cv::Mat image;
     cv::Mat image_float;
-    char* url = (char*)args[0].ptr;
+    char* image_url = (char*)args[0].ptr;
     try{
-        image = cv::imread(url);
+        image = cv::imread(image_url);
         cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
-        image.convertTo(image_float, CV_32FC3, 1.0/255, 0);
+        image.convertTo(image_float, CV_32FC3, 1.0/255.0, 0);
         cv::resize(image_float, image_float, cv::Size(224, 224));
 
         auto tensor = torch::from_blob(image_float.data, {1, 224, 224, 3});
         tensor = tensor.permute({0,3,1,2});
-        tensor[0][0] = tensor[0][0].sub_(0.485).div_(0.229);
-        tensor[0][1] = tensor[0][1].sub_(0.456).div_(0.224);
-        tensor[0][2] = tensor[0][2].sub_(0.406).div_(0.225);
+        tensor[0][0] = tensor[0][0].sub_(0.485).div_(0.225);
+        tensor[0][1] = tensor[0][1].sub_(0.485).div_(0.225);
+        tensor[0][2] = tensor[0][2].sub_(0.485).div_(0.225);
 
-        tensor = torch::rand({1, 3, 224, 224}, torch::kFloat32);
-
-        
-        img_tensor.emplace_back(tensor);
+        auto tensor_copy = tensor.clone();
+        img_tensor.emplace_back(tensor_copy);
     }catch(const std::exception& e){
         return false;
     }
