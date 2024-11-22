@@ -7,88 +7,45 @@
 
 - MorphingDB supports model centric and task centric inference.
 
-## Quick Docker Start
+## Quick Start
+dowload [zip](https://drive.google.com/file/d/17EhgU-ujGzNP75ytClrivUT4tXblLqnV/view?usp=sharing) to morphingdb project path
 
-```sql
-# build docker image
-sudo docker build -t MorphingDB .
-# run docker contanier
-sudo docker run --name MorphingDB_test -e POSTGRES_PASSWORD=123456 -d MorphingDB:latest -p 5432:5432
-# enter docker 
+unzip model
+```shell
+unzip models.zip -d ./model/
+```
+
+use docker image from docker hub
+```shell
+sudo docker pull morphingdb/morphingdb:1.0
+```
+
+or build docker image
+```shell
+sudo docker build -t morphingdb .
+```
+
+
+create docker contanier
+```shell
+# abs_morphingdb_test_dir is the absolute path of the morphingdb project directory from https://github.com/MorphingDB/Morphingdb_test/
+sudo docker run -d 
+--name MorphingDB_test 
+-e POSTGRES_PASSWORD=123456 
+-v [abs_morphingdb_test_dir]:[abs_morphingdb_test_dir]
+-v [data_dir]:/var/lib/postgresql/data
+-p [port]:5432 
+morphingdb
+```
+enter docker 
+```shell
 sudo docker exec -it [contanier id] /bin/bash
-# run test
-su postgres
-psql -p 5432 -d postgres -c 'create extension pgdl;'
-psql -p 5432 -d postgres -f /home/pgdl/test/sql/docker_test.sql
-psql -p 5432 -d postgres -f /home/pgdl/test/sql/vector_test.sql
-```
-
-## Installation
-MorphingDB supports Postgres 12+ in linux
-
-### Install libtorch
-
-```shell
--- cpu
-wget -P ./third_party https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.0.0%2Bcpu.zip
--- gpu
-wget -P ./third_party https://download.pytorch.org/libtorch/cu117/libtorch-shared-with-deps-2.0.0%2Bcu117.zip
-unzip -d ./third_party/libtorch ./third_party/*.zip
-rm ./third_party/*.zip
-```
-
-### Install Postgres
-
-```shell
-sudo yum install postgresql
-```
-
-### Install OpenCV
-
-```shell
-sudo yum install opencv opencv-devel opencv-python
-```
-
-### Install SentencePiece
-
-```shell
-cd third_party
-git clone https://github.com/google/sentencepiece
-cd sentencepiece
-mkdir build
-cd build
-cmake ..
-make -j4
-sudo make install
-```
-
-### Install Onnxruntime
-```shell
-wget -P ./third_party https://github.com/microsoft/onnxruntime/releases/download/v1.18.1/onnxruntime-linux-x64-1.18.1.tgz
-tar -xvzf ./third_party/onnxruntime-linux-x64-1.18.1.tgz -C ./third_party
-```
-
-### Make and install
-
-```shell
-cmake -DCMAKE_PREFIX_PATH="third_party/libtorch" ..
-make -j4
-make install
-```
-
-## Getting Started
-
-Start server
-
-```shell
-initdb -D <data_directory>
-postgres -D <data_directory> -p 5432
 ```
 
 Connect to server
 
 ```shell
-psql -p 5432 -d postgres
+psql -p 5432 -d postgres -U postgres -h localhost
 ```
 
 Enable the extension
@@ -96,15 +53,13 @@ Enable the extension
 CREATE EXTENSION pgdl;
 ```
 
-
-
 ## How to use
-### Prediction
 
 #### Create model
 ```sql
-SELECT create_model(model_name, model_path, model description);
+SELECT create_model(model_name, model_path, base_model, model description);
 ```
+
 
 #### Write pre and post process
 You need to write the corresponding input and output handlers for the created model in src/external_process, and rebuild extension, make install.
@@ -133,6 +88,13 @@ AS result
 FROM [table];
 ```
 
+#### Task centric
+```sql
+SELECT image_classification(<column_name>) as task_result
+FROM <table_name>
+WHERE <conditions>;
+```
+
 
 ### Tables
 After the model is imported, the user can view the model information through the model_info table.
@@ -150,6 +112,7 @@ create table vec_test(id integer, vec mvec);
 #### Insert vector
 ```sql
 insert into vec_test values(1, '[1.0,2.2,3.123,4.2]{4}');
+insert into vec_test values(1, '[1.0,2.2,3.123,4.2]');
 insert into vec_test values(1, '[1.0,2.2,3.123,4.2]{2,2}');
 insert into vec_test values(1, ARRAY[1.0,2.0,3.0,1.2345]::float4[]::mvec);
 ```
@@ -167,9 +130,6 @@ update vec_test set vec=vec-text_to_mvec('[1,2,3,4]');
 
 select * from vec_test where vec=='[1,2.2,3.123,4.2]';
 ```
-
-#### TODO
-MorphingDB will support the interconversion of libtorch vectors to mvec.
 
 
 ## Reference

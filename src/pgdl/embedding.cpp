@@ -21,7 +21,15 @@ image_to_vector(const int32_t width,
     cv::Mat image_float;
     MVec*   vec;
 
-    image = cv::imread(image_url);
+    try{
+        image = cv::imread(image_url);
+    }
+    catch(const std::exception& e)
+    {
+        ereport(ERROR,
+					(errmsg(e.what())));
+        return NULL;
+    }
     cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
     image.convertTo(image_float, CV_32FC3, 1.0/255.0, 0);
     cv::resize(image_float, image_float, cv::Size(width, height));
