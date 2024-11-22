@@ -15,7 +15,7 @@ function log()
     shift
     local message=$*
     local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-    local log_file="./log.txt"
+    local log_file="/home/pgdl/log.txt"
 
     # 打印执行结果、时间戳和日志等级
     echo "[${timestamp}] [${level}] ${message}"
@@ -72,6 +72,9 @@ if [[ $? -ne 0 ]]; then
 else
     loginfo "install sentencepiece success!"
 fi
+
+mkdir -p /usr/local/share/SentencePiece
+mv ${script_path}/../shell/config/SentencePieceConfig.cmake /usr/local/share/SentencePiece/
 
 cd -
 
@@ -138,5 +141,24 @@ if [[ $? -ne 0 ]]; then
 else
     loginfo "install opencv success!"
 fi
+
+# download onnxruntime
+wget -P ${script_path}/../third_party https://master.dl.sourceforge.net/project/onnx-runtime.mirror/v1.18.1/onnxruntime-linux-x64-1.18.1.tgz --no-check-certificate
+if [[ $? -ne 0 ]]; then
+    logerror "download onnxruntime error!"
+    exit 1
+else
+    loginfo "download onnxruntime success!"
+fi
+# unzip onnxruntime
+tar -xvzf ${script_path}/../third_party/onnxruntime-linux-x64-1.18.1.tgz -C ${script_path}/../third_party
+if [[ $? -ne 0 ]]; then
+    logerror "unzip onnxruntime error!"
+    exit 1
+else
+    loginfo "unzip onnxruntime success!"
+fi
+mv ${script_path}/../shell/config/onnxruntimeConfig.cmake ${script_path}/../third_party/onnxruntime-linux-x64-1.18.1/
+
 
 cd ${script_path}/../
