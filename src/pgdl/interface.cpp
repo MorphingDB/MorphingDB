@@ -73,7 +73,7 @@ PG_FUNCTION_INFO_V1(text_pre_process);
 PG_FUNCTION_INFO_V1(print_cost);
 
 // select model
-PG_FUNCTION_INFO_V1(select_model);
+PG_FUNCTION_INFO_V1(image_classification);
 
 
 typedef struct TimeFilter {
@@ -995,7 +995,7 @@ print_cost(PG_FUNCTION_ARGS)
 }
 
 Datum 
-select_model(PG_FUNCTION_ARGS)
+image_classification(PG_FUNCTION_ARGS)
 {
     char* table_name = NULL;
     char* col_name = NULL;
@@ -1008,13 +1008,13 @@ select_model(PG_FUNCTION_ARGS)
     dataset_name = TextDatumGetCString(PG_GETARG_DATUM(2));
     sample_size = PG_GETARG_INT32(3);
 
-    ModelSelection select_model("/home/lhh/pgdl_basemodel_new/model/select_model/ViT-L-14_visual_traced.pt", 
-                                "/home/lhh/pgdl_basemodel_new/model/select_model/regression_model.onnx");
+    ModelSelection image_classification("/home/pgdl/model/select_model/ViT-L-14_visual_traced.pt", 
+                                "/home/pgdl/model/select_model/regression_model.onnx");
 
-    std::string result_str = select_model.SelectModel(table_name, 
+    std::string result_str = image_classification.SelectModel(table_name, 
                                                       col_name,           
                                                       sample_size,
-                                                      "cifar10");
+                                                      dataset_name);
     PG_RETURN_CSTRING(result_str.c_str());
 }
 
