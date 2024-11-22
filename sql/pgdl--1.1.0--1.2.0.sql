@@ -61,12 +61,12 @@ RETURNS text
 AS 'MODULE_PATHNAME', 'print_cost'
 LANGUAGE C STRICT;
 
-CREATE OR REPLACE FUNCTION select_model(  
+CREATE OR REPLACE FUNCTION image_classification(  
     table_name text,
     col_name text,
     dataset_name text,
     sample_size integer
 )  
 RETURNS cstring
-AS 'MODULE_PATHNAME', 'select_model'  
+AS 'MODULE_PATHNAME', 'image_classification'  
 LANGUAGE C STRICT;
