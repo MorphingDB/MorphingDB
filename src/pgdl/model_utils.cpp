@@ -100,7 +100,7 @@ compare_model_struct(const torch::jit::script::Module& model, const torch::jit::
         std::string layer_name = pair.name;
         torch::Tensor model_tensor = pair.value;
 
-        if (layer_name.find("fc") != std::string::npos) {
+        if (layer_name.find("fc") != std::string::npos || layer_name.find("classifier") != std::string::npos) {
             continue;
         }
         
@@ -158,7 +158,7 @@ compare_model_struct(const char* model_path, const char* base_model_path)
         std::string layer_name = pair.name;
         torch::Tensor model_tensor = pair.value;
 
-        if (layer_name.find("fc") != std::string::npos) {
+        if (layer_name.find("fc") != std::string::npos || layer_name.find("classifier") != std::string::npos) {
             continue;
         }
         
@@ -281,9 +281,9 @@ delete_model_parameter(const char* model_name)
 
     if(sql.Bind(1, TEXTOID, CStringGetTextDatum(model_name)) && 
        sql.Execute()){
-        if(SPI_processed == 0){
-            return false;
-        }
+        // if(SPI_processed == 0){
+        //     return false;
+        // }
     }else{
         return false;
     }
@@ -292,50 +292,100 @@ delete_model_parameter(const char* model_name)
 }
 
 void 
-model_parameter_extraction(const char* model_path, 
+model_parameter_extraction(const char* model_path,
+                                const char* base_model_name,
                                 ModelLayer** parameter_list, 
                                 int32_t& layer_size)
 {
     //uint32 layer_size = 0;
     torch::jit::script::Module model;
+    torch::jit::script::Module base_model;
+
+    ereport(INFO, (errmsg("base_model_name:%s", base_model_name)));
     try {
         model = torch::jit::load(model_path);
+        base_model = torch::jit::load(base_model_name);
     }
     catch (const std::exception& e) {
         *parameter_list = NULL;
         //ereport(ERROR, (errmsg("load model failed, error message: %s", e.what())));
     }
     
-    auto parms = model.named_parameters();
-    auto buffers = model.named_buffers();
-    layer_size = parms.size() + buffers.size();
-    //ereport(INFO, (errmsg("layer_size:%d", layer_size)));
-    *parameter_list = (ModelLayer*)palloc((layer_size) * sizeof(ModelLayer));
 
-    int index=0;
-    for(const auto& pair : parms){
-        std::string name = pair.name;
-        torch::Tensor tensor = pair.value;
+    auto model_parms = model.named_parameters();
+    auto model_buffers = model.named_buffers();
+    auto base_model_parms = base_model.named_parameters();
+    auto base_model_buffers = base_model.named_buffers();
 
-        (*parameter_list)[index].layer_name = (char*)palloc((name.size() + 1) * sizeof(char));
-        strcpy((*parameter_list)[index].layer_name, name.c_str());
+    // 创建一个映射，用于快速查找 base_model 中的参数
+    std::unordered_map<std::string, torch::Tensor> base_model_map;
 
-        MVec* vector = tensor_to_vector(tensor);
-        (*parameter_list)[index].layer_parameter = vector;
-
-        index++;
+    for (const auto& pair : base_model_parms) {
+        std::string layer_name = pair.name;
+        torch::Tensor parameter = pair.value;
+        base_model_map[layer_name] = parameter;
     }
-    for(const auto& pair : buffers){
-        std::string name = pair.name;
-        torch::Tensor tensor = pair.value;
 
-        (*parameter_list)[index].layer_name = (char*)palloc((name.size() + 1) * sizeof(char));
-        strcpy((*parameter_list)[index].layer_name, name.c_str());
+    for (const auto& pair : base_model_buffers) {
+        std::string layer_name = pair.name;
+        torch::Tensor parameter = pair.value;
+        base_model_map[layer_name] = parameter;
+    }
 
-        MVec* vector = tensor_to_vector(tensor);
-        (*parameter_list)[index].layer_parameter = vector;
+    // 计算不同参数的数量
+    int diff_count = 0;
+    for (const auto& pair : model_parms) {
+        if (pair.value.sizes() != base_model_map[pair.name].sizes() ||
+            !torch::allclose(pair.value, base_model_map[pair.name])) {
+            diff_count++;
+        }
+    }
+    for (const auto& pair : model_buffers) {
+        if (pair.value.sizes() != base_model_map[pair.name].sizes() || 
+            !torch::allclose(pair.value, base_model_map[pair.name])) {
+            diff_count++;
+        }
+    }
 
-        index++;
+    layer_size = diff_count;
+    if (layer_size == 0) {
+        *parameter_list = NULL;
+        ereport(INFO, (errmsg("layer_size:%d", layer_size)));
+        return;
+    }
+
+    *parameter_list = (ModelLayer*)palloc(layer_size * sizeof(ModelLayer));
+    int index = 0;
+    
+    for (const auto& pair : model_parms) {
+        if (pair.value.sizes() != base_model_map[pair.name].sizes() || 
+            !torch::allclose(pair.value, base_model_map[pair.name])) {
+            std::string name = pair.name;
+            torch::Tensor tensor = pair.value;
+
+            (*parameter_list)[index].layer_name = (char*)palloc((name.size() + 1) * sizeof(char));
+            strcpy((*parameter_list)[index].layer_name, name.c_str());
+
+            MVec* vector = tensor_to_vector(tensor);
+            (*parameter_list)[index].layer_parameter = vector;
+
+            index++;
+        }
+    }
+    for (const auto& pair : model_buffers) {
+        if (pair.value.sizes() != base_model_map[pair.name].sizes() || 
+            !torch::allclose(pair.value, base_model_map[pair.name])) {
+            std::string name = pair.name;
+            torch::Tensor tensor = pair.value;
+
+            (*parameter_list)[index].layer_name = (char*)palloc((name.size() + 1) * sizeof(char));
+            strcpy((*parameter_list)[index].layer_name, name.c_str());
+
+            MVec* vector = tensor_to_vector(tensor);
+            (*parameter_list)[index].layer_parameter = vector;
+
+            index++;
+        }
     }
 }
 

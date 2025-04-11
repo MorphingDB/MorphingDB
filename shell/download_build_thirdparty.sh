@@ -143,7 +143,7 @@ else
 fi
 
 # download onnxruntime
-wget -P ${script_path}/../third_party https://master.dl.sourceforge.net/project/onnx-runtime.mirror/v1.18.1/onnxruntime-linux-x64-1.18.1.tgz --no-check-certificate
+wget -P ${script_path}/../third_party https://github.com/microsoft/onnxruntime/releases/download/v1.18.1/onnxruntime-linux-x64-1.18.1.tgz --no-check-certificate
 if [[ $? -ne 0 ]]; then
     logerror "download onnxruntime error!"
     exit 1

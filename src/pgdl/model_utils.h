@@ -40,7 +40,7 @@ bool insert_model_layer_parameter(const char* model_name, const char* layer_name
 
 bool delete_model_parameter(const char* model_name);
 
-void model_parameter_extraction(const char* model_path, ModelLayer** parameter_list, int32_t& layer_size);
+void model_parameter_extraction(const char* model_path, const char* base_model_name, ModelLayer** parameter_list, int32_t& layer_size);
 
 // void model_parameter_merging(const char* model_name, torch::jit::script::Module& model);
 

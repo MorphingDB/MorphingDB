@@ -91,6 +91,6 @@ install(FILES build/pgdl.so
 )
 
 # install control file and sql file
-install(FILES pgdl.control sql/pgdl--1.0.0.sql sql/pgdl--1.0.0--1.1.0.sql sql/pgdl--1.1.0--1.2.0.sql
+install(FILES pgdl.control sql/pgdl--1.0.0.sql sql/pgdl--1.0.0--1.1.0.sql sql/pgdl--1.1.0--1.2.0.sql sql/pgdl--1.2.0--1.3.0.sql
         DESTINATION "${PostgreSQL_SHARE_DIR}/extension"
 )
