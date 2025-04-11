@@ -17,7 +17,7 @@ unzip models.zip -d ./model/
 
 use docker image from docker hub
 ```shell
-sudo docker pull morphingdb/morphingdb:1.0
+sudo docker pull morphingdb/morphingdb:latest
 ```
 
 or build docker image
@@ -32,7 +32,8 @@ create docker contanier
 sudo docker run -d 
 --name MorphingDB_test 
 -e POSTGRES_PASSWORD=123456 
--v [abs_morphingdb_test_dir]:[abs_morphingdb_test_dir]
+-v [abs_morphingdb_test_dir]:[same_abs_morphingdb_test_dir]
+-v [model_dir]:/home/pgdl/model/
 -v [data_dir]:/var/lib/postgresql/data
 -p [port]:5432 
 morphingdb

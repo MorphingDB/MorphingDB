@@ -48,14 +48,33 @@ bool MyProcessImage_vec(std::vector<torch::jit::IValue>& img_tensor, Args* args)
 
 bool MyOutPutProcessfloat(torch::jit::IValue& output_tensor, Args* args, float8& result)
 {
-    try{
-        auto tensor = output_tensor.toTensor().slice(1, 0, 120);
-    
-        std::tuple<torch::Tensor,torch::Tensor> res = tensor.sort(1, true);
-        torch::Tensor top_scores = std::get<1>(res);
-
-        result = top_scores[0][0].item<float8>();
-    } catch(const std::exception& e){
+    try {
+        // 检查 output_tensor 是否是 Tensor
+        if (output_tensor.isTensor()) {
+            auto tensor = output_tensor.toTensor(); //.slice(1, 0, 120);
+            std::tuple<torch::Tensor, torch::Tensor> res = tensor.sort(1, true);
+            torch::Tensor top_scores = std::get<1>(res);
+            result = top_scores[0][0].item<float8>();
+        }
+        // 检查 output_tensor 是否是 Tuple
+        else if (output_tensor.isTuple()) {
+            // 获取 Tuple 中的第一个元素，假设它是 Tensor
+            auto tuple = output_tensor.toTuple();
+            if (tuple->elements().size() > 0 && tuple->elements()[0].isTensor()) {
+                auto tensor = tuple->elements()[0].toTensor(); //.slice(1, 0, 120);
+                std::tuple<torch::Tensor, torch::Tensor> res = tensor.sort(1, true);
+                torch::Tensor top_scores = std::get<1>(res);
+                result = top_scores[0][0].item<float8>();
+            } else {
+                elog(INFO, "The first element of the tuple is not a Tensor.\n");
+                return false;
+            }
+        } else {
+            elog(INFO, "output_tensor is neither a Tensor nor a Tuple.\n");
+            return false;
+        }
+    } catch (const std::exception& e) {
+        elog(INFO, "e.what(): %s\n", e.what());
         return false;
     }
     return true;
@@ -446,7 +465,7 @@ bool SquardOutputProcessText(torch::jit::IValue& outputs, Args* args, std::strin
         process.LoadOrDie("/data/nlp/squad2/albert-base-v2-squad2/spiece.model");
         std::vector<int> answer;
         answer.insert(answer.end(), tis.begin() + start_index, tis.begin() + end_index + 1);
-        process.Decode(answer, &result);
+        //process.Decode(answer, &result);
     }catch(const std::exception& e){
         return false;
     }
@@ -493,6 +512,10 @@ bool FinanceOutputProcessFloat(torch::jit::IValue& outputs, Args* args, float8& 
 void register_callback()
 {
     elog(INFO, "register callback");
+    model_manager.RegisterPreProcess("common", MyProcessImage_vec);
+    model_manager.RegisterOutoutProcessFloat("common", MyOutPutProcessfloat);
+    model_manager.RegisterOutoutProcessText("common", MyOutPutProcesstext);
+    
     model_manager.RegisterPreProcess("defect", MyProcessImage);
     model_manager.RegisterOutoutProcessFloat("defect", MyOutPutProcessfloat);
     model_manager.RegisterOutoutProcessText("defect", MyOutPutProcesstext);
@@ -551,4 +574,8 @@ void register_callback()
 
     model_manager.RegisterPreProcess("finance", FinancePreProcess);
     model_manager.RegisterOutoutProcessFloat("finance", FinanceOutputProcessFloat);
+
+    model_manager.RegisterPreProcess("febri", MyProcessImage);
+    model_manager.RegisterOutoutProcessFloat("febri", MyOutPutProcessfloat);
+    model_manager.RegisterOutoutProcessText("febri", MyOutPutProcesstext);
 }

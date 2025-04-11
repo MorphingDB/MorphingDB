@@ -69,6 +69,10 @@ PG_FUNCTION_INFO_V1(image_pre_process);
 // text pre process
 PG_FUNCTION_INFO_V1(text_pre_process);
 
+
+// base model cache
+PG_FUNCTION_INFO_V1(load_base_model);
+
 // print cost time
 PG_FUNCTION_INFO_V1(print_cost);
 
@@ -138,10 +142,10 @@ create_model(PG_FUNCTION_ARGS)
         }
         ereport(INFO, (errmsg("model struct equals")));
 
-        model_parameter_extraction(model_path, &parameter_list, layer_size);
-        if(parameter_list == NULL){
-            ereport(ERROR, (errmsg("model_parameter_extraction error!")));
-        }
+        model_parameter_extraction(model_path, base_model_path.c_str(), &parameter_list, layer_size);
+        // if(parameter_list == NULL){
+        //     ereport(ERROR, (errmsg("model_parameter_extraction error!")));
+        // }
 
         ereport(INFO, (errmsg("model extraction success")));
 
@@ -161,7 +165,9 @@ create_model(PG_FUNCTION_ARGS)
             pfree(parameter_list[i].layer_name);
             pfree(parameter_list[i].layer_parameter);
         }
-        pfree(parameter_list);
+        if(parameter_list != NULL){
+            pfree(parameter_list);
+        }
 
         if(model_manager.CreateModel(model_name, model_path, base_model_name, discription)){
             PG_RETURN_BOOL(true);
@@ -186,6 +192,11 @@ modify_model(PG_FUNCTION_ARGS)
     
     if(access(model_path, F_OK) != 0){
         ereport(ERROR, (errmsg("model is not exist!")));
+    }
+
+    //基于基础模型
+    if(model_manager.HaveBaseModel(model_name)){
+        ereport(ERROR, (errmsg("models with base models do not support updates!")));
     }
 
     if(model_manager.UpdateModel(model_name, model_path)){
@@ -965,6 +976,13 @@ text_pre_process(PG_FUNCTION_ARGS)
     ret = text_to_vector(model_path, text_a);
     
     PG_RETURN_POINTER(ret);
+}
+
+Datum 
+load_base_model(PG_FUNCTION_ARGS)
+{
+    model_manager.InitBaseModel();
+    PG_RETURN_VOID();
 }
 
 Datum

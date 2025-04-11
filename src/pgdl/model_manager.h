@@ -88,6 +88,8 @@ public:
     bool GetBaseModelPathFromBaseModel(const std::string base_model_name, 
                           std::string& base_model_path);
 
+    bool GetBaseModelPaths(std::vector<std::pair<std::string, std::string>>& base_model_paths);
+
     bool GetBaseModelPathFromModel(const std::string model_name, 
                           std::string& base_model_path);
 
@@ -198,10 +200,13 @@ public:
     bool Predict(const std::string& model_path,
                  std::vector<torch::jit::IValue>& input, 
                  torch::jit::IValue& output);
+
+    bool InitBaseModel();
 private:
     ModelManager(const ModelManager &other);  
     ModelManager & operator=(const ModelManager &other);
 private:
+    std::unordered_map<std::string, torch::jit::script::Module>                                      base_module_handle_;  //key为路径，value为module句柄
     std::unordered_map<std::string, std::pair<torch::jit::script::Module, torch::DeviceType>>        module_handle_;  //key为路径，value为module句柄以及是否使用gpu
     std::unordered_map<std::string, PreProcessCallback>                                              module_preprocess_functions_; //key为模型路径，value为注册的预处理回调函数
     std::unordered_map<std::string, OutputProcessFloatCallback>                                      module_outputprocess_functions_float_; //key为模型路径，value为输出处理回调函数
