@@ -65,7 +65,9 @@ CREATE OR REPLACE FUNCTION image_classification(
     table_name text,
     col_name text,
     dataset_name text,
-    sample_size integer
+    sample_size integer,
+    select_model_path text,
+    regression_model_path text
 )  
 RETURNS cstring
 AS 'MODULE_PATHNAME', 'image_classification'  

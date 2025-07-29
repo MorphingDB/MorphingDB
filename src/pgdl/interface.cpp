@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include "httprequest.hpp"
 
 
 #ifdef __cplusplus
@@ -79,6 +80,10 @@ PG_FUNCTION_INFO_V1(print_cost);
 // select model
 PG_FUNCTION_INFO_V1(image_classification);
 
+//api load model
+PG_FUNCTION_INFO_V1(api_load_model);
+//api predict
+PG_FUNCTION_INFO_V1(api_predict);
 
 typedef struct TimeFilter {
     int64_t load_model_time; //ms
@@ -1034,6 +1039,80 @@ image_classification(PG_FUNCTION_ARGS)
                                                       sample_size,
                                                       dataset_name);
     PG_RETURN_CSTRING(result_str.c_str());
+}
+
+
+Datum
+api_load_model(PG_FUNCTION_ARGS)
+{
+    char* model_name = NULL;
+    char* model_path = NULL;
+
+    model_name = PG_GETARG_CSTRING(0); 
+    model_path = PG_GETARG_CSTRING(1);
+    
+    if(strlen(model_name) == 0){
+        ereport(ERROR, (errmsg("model_name is empty!")));
+    }
+
+    if(strlen(model_path) == 0){
+        ereport(ERROR, (errmsg("model_path is empty!")));
+    }
+
+
+    // 构建动态的 JSON 请求体
+    std::ostringstream json_body_stream;
+    json_body_stream << "{\"model_name\": \"" << model_name << "\", \"model_path\": \"" << model_path << "\"}";
+    std::string json_body = json_body_stream.str();
+
+    // 设置请求头
+    const http::HeaderFields headers = {
+        {"Content-Type", "application/json"}
+    };
+
+    // 创建 HTTP 请求
+    http::Request request{"http://0.0.0.0:8000/load_model/"};
+
+    // 发送 POST 请求
+    const auto response = request.send("POST", json_body, headers);
+
+    elog(INFO, "Response status: %d", response.status);
+    PG_RETURN_BOOL(true);
+}
+
+Datum
+api_predict(PG_FUNCTION_ARGS)
+{
+    char* model_name = NULL;
+    char* image_url = NULL;
+
+    model_name = PG_GETARG_CSTRING(0); 
+    image_url = PG_GETARG_CSTRING(1);
+    
+    if(strlen(model_name) == 0){
+        ereport(ERROR, (errmsg("model_name is empty!")));
+    }
+
+    if(strlen(image_url) == 0){
+        ereport(ERROR, (errmsg("image_url is empty!")));
+    }
+
+    // 构建动态的 JSON 请求体
+    std::ostringstream json_body_stream;
+    json_body_stream << "{\"model_name\": \"" << model_name << "\", \"image_url\": \"" << image_url << "\"}";
+    std::string json_body = json_body_stream.str();
+
+    // 设置请求头
+    const http::HeaderFields headers = {
+        {"Content-Type", "application/json"}
+    };
+
+    // 创建 HTTP 请求
+    http::Request request{"http://0.0.0.0:8000/predict/"};
+    const auto response = request.send("POST", json_body, headers);
+
+    std::string responseBody(response.body.begin(), response.body.end());
+    PG_RETURN_CSTRING(responseBody.c_str());
 }
 
 #ifdef __cplusplus

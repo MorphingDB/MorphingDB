@@ -25,7 +25,21 @@ insert into ai_operator values('Gradient Calculation','计算损失函数对参�
 insert into ai_operator values('L1 Loss','L = |y_pred - y_true|');
 insert into ai_operator values('L2 Loss','L = (y_pred - y_true)^2');
 
+CREATE OR REPLACE FUNCTION api_load_model(  
+    model_name cstring,
+    model_path cstring
+)  
+RETURNS boolean
+AS 'MODULE_PATHNAME', 'api_load_model'  
+LANGUAGE C STRICT;
 
+CREATE OR REPLACE FUNCTION api_predict(  
+    model_name cstring,
+    image_url cstring
+)  
+RETURNS boolean
+AS 'MODULE_PATHNAME', 'api_predict'  
+LANGUAGE C STRICT;
 
 -- insert into base_model_info values('resnet18', 'd17e88193d63653e785ccd1e8314caee', '/home/lhh/models/resnet18_resnet18_imagenet.pt');
 -- insert into base_model_info values('alexnet', '722de753346c94d79e7397a28c6f5674', '/home/lhh/models/alexnet_alexnet_imagenet.pt');
