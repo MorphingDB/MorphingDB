@@ -132,6 +132,31 @@ update vec_test set vec=vec-text_to_mvec('[1,2,3,4]');
 select * from vec_test where vec=='[1,2.2,3.123,4.2]';
 ```
 
+## Morphingdb Test
+
+1. download models from [here](https://drive.google.com/file/d/17EhgU-ujGzNP75ytClrivUT4tXblLqnV/view)
+
+```shell
+unzip models.zip -d ./test/morphingdb_test/
+```
+
+2. dowload data from [here](https://drive.google.com/file/d/1bAg66ifb54ge_J8CRjkSk_yRhyTRZYWe/view?usp=sharing)
+
+```shell
+unzip data.zip -d ./test/morphingdb_test/
+```
+
+### Run
+
+```shell
+cd test
+uv run main.py
+```
+
+### Result
+
+result will be saved in `result` dir.
+
 
 ## Reference
 
